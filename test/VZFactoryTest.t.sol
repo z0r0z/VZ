@@ -36,6 +36,16 @@ contract VZFactoryTest is Test {
         assertEq(pair.token1(), address(token1));
     }
 
+    function testCreateETHPair() public {
+        address tokenB = address(1);
+        address pairAddress = factory.createPair(address(0), tokenB);
+
+        VZPair pair = VZPair(pairAddress);
+
+        assertEq(pair.token0(), address(0));
+        assertEq(pair.token1(), tokenB);
+    }
+
     function testCreatePairPairExists() public {
         factory.createPair(address(token1), address(token0));
 
