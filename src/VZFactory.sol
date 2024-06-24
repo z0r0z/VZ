@@ -23,7 +23,7 @@ contract VZERC20 is ERC20 {
 contract VZPair is VZERC20, ReentrancyGuard {
     using UQ112x112 for uint224;
 
-    uint256 internal constant MINIMUM_LIQUIDITY = 10 ** 3;
+    uint256 internal constant MINIMUM_LIQUIDITY = 1000;
 
     address internal immutable factory;
     address public immutable token0;
@@ -116,7 +116,8 @@ contract VZPair is VZERC20, ReentrancyGuard {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // Gas savings.
         uint256 balance0 = SafeTransferLib.balanceOf(token0, address(this));
         uint256 balance1 = SafeTransferLib.balanceOf(token1, address(this));
-        (uint256 amount0, uint256 amount1) = (balance0 - _reserve0, balance1 - _reserve1);
+        uint256 amount0 = balance0 - _reserve0;
+        uint256 amount1 = balance1 - _reserve1;
 
         bool feeOn = _mintFee(_reserve0, _reserve1);
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
