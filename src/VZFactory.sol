@@ -2,8 +2,8 @@
 pragma solidity 0.8.26;
 
 import "@solady/src/tokens/ERC20.sol";
-import "@solady/src/utils/ReentrancyGuard.sol";
 import "@solady/src/utils/SafeTransferLib.sol";
+import "@soledge/src/utils/ReentrancyGuard.sol";
 import "@solady/src/utils/FixedPointMathLib.sol";
 
 /// @notice Contemporary Uniswap V2 LP Token (VZ).
