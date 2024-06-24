@@ -1,36 +1,20 @@
-# [zenplate](https://github.com/z0r0z/zenplate)  [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL-black.svg)](https://opensource.org/license/agpl-v3/) [![solidity](https://img.shields.io/badge/solidity-%5E0.8.25-black)](https://docs.soliditylang.org/en/v0.8.25/) [![Foundry](https://img.shields.io/badge/Built%20with-Foundry-000000.svg)](https://getfoundry.sh/) ![tests](https://github.com/z0r0z/zenplate/actions/workflows/ci.yml/badge.svg)
+# Uniswap VZ
 
-Simpler foundry template.
+Contemporary Uniswap V2 Factory (VZ). By [z0r0z](https://x.com/z0r0zzz).
+
+Changes are meant to cause little disruption to the familiar and battle-tested [Uniswap V2 core](https://github.com/Uniswap/v2-core). While also introducing efficiency and optimized patterns the public has otherwise made through opinionated forks. VZ should consolidate, reform and optimize these variations as much as possible to represent a simple and useable VZ.
+
+Changes include the following:
+
+✵ Latest Solidity Compiler (0.8.26)
+✵ Adapted Syntax (e.g. safemath)
+✵ *Solady* most of the things *etc.*
 
 ## Getting Started
-
-Click [`use this template`](https://github.com/z0r0z/zenplate/generate) to start.
 
 Run: `curl -L https://foundry.paradigm.xyz | bash && source ~/.bashrc && foundryup`
 
 Build the foundry project with `forge build`. Run tests with `forge test`. Measure gas with `forge snapshot`. Format with `forge fmt`.
-
-## GitHub Actions
-
-Contracts will be tested and gas measured on every push and pull request.
-
-You can edit the CI script in [.github/workflows/ci.yml](./.github/workflows/ci.yml).
-
-## Blueprint
-
-```txt
-lib
-├─ forge-std — https://github.com/foundry-rs/forge-std
-src
-├─ Tester — Tester Contract
-test
-└─ Tester.t - Test Contract
-```
-
-## Notable Mentions
-
-- [femplate](https://github.com/refcell/femplate)
-- [prb-foundry-template](https://github.dev/PaulRBerg/foundry-template)
 
 ## Disclaimer
 
