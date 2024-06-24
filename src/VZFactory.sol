@@ -114,7 +114,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to) public nonReentrant returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // Gas savings.
-        uint256 balance0 = SafeTransferLib.balanceOf(token0, address(this));
+        uint256 balance0 = token0 == address(0)
+            ? address(this).balance
+            : SafeTransferLib.balanceOf(token0, address(this));
         uint256 balance1 = SafeTransferLib.balanceOf(token1, address(this));
         uint256 amount0 = balance0 - _reserve0;
         uint256 amount1 = balance1 - _reserve1;
@@ -145,7 +147,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
     function burn(address to) public nonReentrant returns (uint256 amount0, uint256 amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves();
         (address _token0, address _token1) = (token0, token1);
-        uint256 balance0 = SafeTransferLib.balanceOf(_token0, address(this));
+        bool ethBase = token0 == address(0);
+        uint256 balance0 =
+            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
         uint256 balance1 = SafeTransferLib.balanceOf(_token1, address(this));
         uint256 liquidity = balanceOf(address(this));
 
@@ -156,9 +160,12 @@ contract VZPair is VZERC20, ReentrancyGuard {
         amount1 = FixedPointMathLib.mulDiv(liquidity, balance1, _totalSupply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0 || amount1 == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
         _burn(address(this), liquidity);
-        SafeTransferLib.safeTransfer(_token0, to, amount0);
+        ethBase
+            ? SafeTransferLib.safeTransferETH(to, amount0)
+            : SafeTransferLib.safeTransfer(_token0, to, amount0);
         SafeTransferLib.safeTransfer(_token1, to, amount1);
-        balance0 = SafeTransferLib.balanceOf(_token0, address(this));
+        balance0 =
+            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
         balance1 = SafeTransferLib.balanceOf(_token1, address(this));
 
         _update(balance0, balance1, _reserve0, _reserve1);
@@ -183,17 +190,23 @@ contract VZPair is VZERC20, ReentrancyGuard {
 
         uint256 balance0;
         uint256 balance1;
+        bool ethBase = token0 == address(0);
         {
             // Scope for _token{0,1}, avoids stack too deep errors.
             address _token0 = token0;
             address _token1 = token1;
             if (to == _token0 || to == _token1) revert INVALID_TO();
-            if (amount0Out != 0) SafeTransferLib.safeTransfer(_token0, to, amount0Out); // Optimistically transfer tokens.
+            if (amount0Out != 0) {
+                ethBase
+                    ? SafeTransferLib.safeTransferETH(to, amount0Out)
+                    : SafeTransferLib.safeTransfer(_token0, to, amount0Out);
+            } // Optimistically transfer tokens.
             if (amount1Out != 0) SafeTransferLib.safeTransfer(_token1, to, amount1Out); // Optimistically transfer tokens.
             if (data.length != 0) {
                 IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
             }
-            balance0 = SafeTransferLib.balanceOf(_token0, address(this));
+            balance0 =
+                ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
             balance1 = SafeTransferLib.balanceOf(_token1, address(this));
         }
         uint256 amount0In;
@@ -220,9 +233,11 @@ contract VZPair is VZERC20, ReentrancyGuard {
     function skim(address to) public nonReentrant {
         address _token0 = token0; // Gas savings.
         address _token1 = token1; // Gas savings.
-        SafeTransferLib.safeTransfer(
-            _token0, to, (SafeTransferLib.balanceOf(_token0, address(this))) - reserve0
-        );
+        _token0 == address(0)
+            ? SafeTransferLib.safeTransferETH(to, address(this).balance - reserve0)
+            : SafeTransferLib.safeTransfer(
+                _token0, to, (SafeTransferLib.balanceOf(_token0, address(this))) - reserve0
+            );
         SafeTransferLib.safeTransfer(
             _token1, to, (SafeTransferLib.balanceOf(_token1, address(this))) - reserve1
         );
@@ -230,8 +245,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
 
     /// @dev Force reserves to match balances.
     function sync() public nonReentrant {
+        bool ethBase = token0 == address(0);
         _update(
-            SafeTransferLib.balanceOf(token0, address(this)),
+            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this)),
             SafeTransferLib.balanceOf(token1, address(this)),
             reserve0,
             reserve1
@@ -259,13 +275,11 @@ contract VZFactory {
     }
 
     error IDENTICAL_ADDRESSES();
-    error ZERO_ADDRESS();
     error PAIR_EXISTS();
 
     function createPair(address tokenA, address tokenB) public returns (address pair) {
         if (tokenA == tokenB) revert IDENTICAL_ADDRESSES();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        if (token0 == address(0)) revert ZERO_ADDRESS();
         if (getPair[token0][token1] != address(0)) revert PAIR_EXISTS();
         pair =
             address(new VZPair{salt: keccak256(abi.encodePacked(token0, token1))}(token0, token1));

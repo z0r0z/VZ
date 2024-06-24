@@ -36,14 +36,6 @@ contract VZFactoryTest is Test {
         assertEq(pair.token1(), address(token1));
     }
 
-    function testCreatePairZeroAddress() public {
-        vm.expectRevert(encodeError("ZERO_ADDRESS()"));
-        factory.createPair(address(0), address(token0));
-
-        vm.expectRevert(encodeError("ZERO_ADDRESS()"));
-        factory.createPair(address(token1), address(0));
-    }
-
     function testCreatePairPairExists() public {
         factory.createPair(address(token1), address(token0));
 
