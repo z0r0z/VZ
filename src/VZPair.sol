@@ -23,15 +23,15 @@ contract VZERC20 is ERC20 {
 contract VZPair is VZERC20, ReentrancyGuard {
     using UQ112x112 for uint224;
 
-    uint256 internal constant MINIMUM_LIQUIDITY = 1000;
+    uint256 constant MINIMUM_LIQUIDITY = 1000;
 
-    address internal immutable _factory;
     address public immutable token0;
     address public immutable token1;
+    address immutable _factory;
 
-    uint112 internal _reserve0;
-    uint112 internal _reserve1;
-    uint32 internal _blockTimestampLast;
+    uint112 _reserve0;
+    uint112 _reserve1;
+    uint32 _blockTimestampLast;
 
     uint256 public price0CumulativeLast;
     uint256 public price1CumulativeLast;
@@ -58,9 +58,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
     event Sync(uint112 reserve0, uint112 reserve1);
 
     constructor(address _token0, address _token1) payable {
-        _factory = msg.sender;
         token0 = _token0;
         token1 = _token1;
+        _factory = msg.sender;
     }
 
     error OVERFLOW();
