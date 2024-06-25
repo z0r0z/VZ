@@ -5,27 +5,38 @@ import "forge-std/Test.sol";
 import {VZPair, VZFactory, UQ112x112} from "../src/VZFactory.sol";
 import "@solady/test/utils/mocks/MockERC20.sol";
 
+/// @dev Forked from Zuniswap (https://github.com/Jeiwan/zuniswapv2/blob/main/test/ZuniswapV2Pair.t.sol).
 contract VZPairTest is Test {
     MockERC20 token0;
     MockERC20 token1;
     VZPair pair;
+    VZPair ethPair;
     TestUser testUser;
+
+    VZFactory factory;
 
     function setUp() public {
         testUser = new TestUser();
 
-        token0 = new MockERC20("Token A", "TKNA", 18);
-        token1 = new MockERC20("Token B", "TKNB", 18);
+        address tokenA = address(new MockERC20("Token A", "TKNA", 18));
+        address tokenB = address(new MockERC20("Token B", "TKNB", 18));
 
-        VZFactory factory = new VZFactory(makeAddr("alice"));
-        address pairAddress = factory.createPair(address(token0), address(token1));
-        pair = VZPair(pairAddress);
+        (address _token0, address _token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+
+        token0 = MockERC20(_token0);
+        token1 = MockERC20(_token1);
+
+        factory = new VZFactory(makeAddr("alice"));
+        pair = VZPair(payable(factory.createPair(address(token0), address(token1))));
+        ethPair = VZPair(payable(factory.createPair(address(0), address(token1))));
 
         token0.mint(address(this), 10 ether);
         token1.mint(address(this), 10 ether);
 
         token0.mint(address(testUser), 10 ether);
         token1.mint(address(testUser), 10 ether);
+
+        payable(address(testUser)).transfer(3.33 ether);
     }
 
     function encodeError(string memory error) internal pure returns (bytes memory encoded) {
@@ -42,6 +53,12 @@ contract VZPairTest is Test {
 
     function assertReserves(uint112 expectedReserve0, uint112 expectedReserve1) internal {
         (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+        assertEq(reserve0, expectedReserve0, "unexpected reserve0");
+        assertEq(reserve1, expectedReserve1, "unexpected reserve1");
+    }
+
+    function assertReservesETH(uint112 expectedReserve0, uint112 expectedReserve1) internal {
+        (uint112 reserve0, uint112 reserve1,) = ethPair.getReserves();
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
@@ -162,7 +179,9 @@ contract VZPairTest is Test {
     }
 
     function testBurnUnbalancedDifferentUsers() public {
-        testUser.provideLiquidity(address(pair), address(token0), address(token1), 1 ether, 1 ether);
+        testUser.provideLiquidity(
+            payable(address(pair)), address(token0), address(token1), 1 ether, 1 ether
+        );
 
         assertEq(pair.balanceOf(address(this)), 0);
         assertEq(pair.balanceOf(address(testUser)), 1 ether - 1000);
@@ -240,6 +259,29 @@ contract VZPairTest is Test {
             "unexpected token1 balance"
         );
         assertReserves(1 ether + 0.1 ether, uint112(2 ether - amountOut));
+    }
+
+    function testSwapETHScenario() public {
+        uint256 startingETHBalance = address(this).balance;
+        payable(address(ethPair)).transfer(1 ether);
+        token1.transfer(address(ethPair), 2 ether);
+        VZPair(ethPair).mint(address(this));
+
+        uint256 amountOut = 0.181322178776029826 ether;
+        payable(ethPair).transfer(0.1 ether);
+        VZPair(ethPair).swap(0, amountOut, address(this), "");
+
+        assertEq(
+            address(this).balance,
+            startingETHBalance - 1 ether - 0.1 ether,
+            "unexpected token0/eth balance"
+        );
+        assertEq(
+            token1.balanceOf(address(this)),
+            10 ether - 2 ether + amountOut,
+            "unexpected token1 balance"
+        );
+        assertReservesETH(1 ether + 0.1 ether, uint112(2 ether - amountOut));
     }
 
     function testSwapBasicScenarioReverseDirection() public {
@@ -437,13 +479,15 @@ contract VZPairTest is Test {
 
 contract TestUser {
     function provideLiquidity(
-        address pairAddress_,
+        address payable pairAddress_,
         address token0Address_,
         address token1Address_,
         uint256 amount0_,
         uint256 amount1_
     ) public {
-        ERC20(token0Address_).transfer(pairAddress_, amount0_);
+        bool ethBased = token0Address_ == address(0);
+        if (ethBased) payable(pairAddress_).transfer(amount0_);
+        else ERC20(token0Address_).transfer(pairAddress_, amount0_);
         ERC20(token1Address_).transfer(pairAddress_, amount1_);
 
         VZPair(pairAddress_).mint(address(this));
@@ -452,8 +496,10 @@ contract TestUser {
     function removeLiquidity(address pairAddress_) public {
         uint256 liquidity = ERC20(pairAddress_).balanceOf(address(this));
         ERC20(pairAddress_).transfer(pairAddress_, liquidity);
-        VZPair(pairAddress_).burn(address(this));
+        VZPair(payable(pairAddress_)).burn(address(this));
     }
+
+    receive() external payable {}
 }
 
 contract Flashloaner {
@@ -474,7 +520,9 @@ contract Flashloaner {
             expectedLoanAmount = amount1Out;
         }
 
-        VZPair(pairAddress).swap(amount0Out, amount1Out, address(this), abi.encode(tokenAddress));
+        VZPair(payable(pairAddress)).swap(
+            amount0Out, amount1Out, address(this), abi.encode(tokenAddress)
+        );
     }
 
     function uniswapV2Call(
@@ -490,4 +538,8 @@ contract Flashloaner {
 
         ERC20(tokenAddress).transfer(msg.sender, balance);
     }
+}
+
+interface IERC20 {
+    function balanceOf(address) external returns (uint256);
 }

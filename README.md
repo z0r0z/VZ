@@ -7,7 +7,9 @@ Changes are meant to cause little disruption to the familiar and battle-tested [
 Changes include the following:
 
 ✵ Latest Solidity Compiler (0.8.26)
+
 ✵ Adapted Syntax (e.g. safemath)
+
 ✵ *Solady* most of the things *etc.*
 
 ## Getting Started

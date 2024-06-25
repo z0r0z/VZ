@@ -30,18 +30,20 @@ contract VZFactoryTest is Test {
     function testCreatePair() public {
         address pairAddress = factory.createPair(address(token1), address(token0));
 
-        VZPair pair = VZPair(pairAddress);
+        VZPair pair = VZPair(payable(pairAddress));
 
         assertEq(pair.token0(), address(token0));
         assertEq(pair.token1(), address(token1));
     }
 
-    function testCreatePairZeroAddress() public {
-        vm.expectRevert(encodeError("ZERO_ADDRESS()"));
-        factory.createPair(address(0), address(token0));
+    function testCreateETHPair() public {
+        address tokenB = address(1);
+        address pairAddress = factory.createPair(address(0), tokenB);
 
-        vm.expectRevert(encodeError("ZERO_ADDRESS()"));
-        factory.createPair(address(token1), address(0));
+        VZPair pair = VZPair(payable(pairAddress));
+
+        assertEq(pair.token0(), address(0));
+        assertEq(pair.token1(), tokenB);
     }
 
     function testCreatePairPairExists() public {
