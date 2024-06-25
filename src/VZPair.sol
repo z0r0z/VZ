@@ -92,12 +92,10 @@ contract VZPair is VZERC20, ReentrancyGuard {
         address factory = _factory;
         assembly ("memory-safe") {
             mstore(0x00, 0x017e7e58) // `feeTo()`.
-            if iszero(staticcall(gas(), factory, 0x1c, 0x04, 0x20, 0x20)) {
-                revert(codesize(), 0x00)
-            }
+            pop(staticcall(gas(), factory, 0x1c, 0x04, 0x20, 0x20))
             feeTo := mload(0x20)
+            feeOn := iszero(iszero(feeTo))
         }
-        feeOn = feeTo != address(0);
         uint256 _kLast = kLast; // Gas savings.
         if (feeOn) {
             if (_kLast != 0) {
