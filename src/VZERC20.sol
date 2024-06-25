@@ -21,13 +21,13 @@ abstract contract VZERC20 {
     string public constant symbol = "VZLP";
     uint256 public constant decimals = 18;
 
-    function totalSupply() public view returns (uint256 result) {
+    function totalSupply() public view virtual returns (uint256 result) {
         assembly ("memory-safe") {
             result := sload(_TOTAL_SUPPLY_SLOT)
         }
     }
 
-    function balanceOf(address owner) public view returns (uint256 result) {
+    function balanceOf(address owner) public view virtual returns (uint256 result) {
         assembly ("memory-safe") {
             mstore(0x0c, _BALANCE_SLOT_SEED)
             mstore(0x00, owner)
@@ -35,7 +35,12 @@ abstract contract VZERC20 {
         }
     }
 
-    function allowance(address owner, address spender) public view returns (uint256 result) {
+    function allowance(address owner, address spender)
+        public
+        view
+        virtual
+        returns (uint256 result)
+    {
         assembly ("memory-safe") {
             mstore(0x20, spender)
             mstore(0x0c, _ALLOWANCE_SLOT_SEED)
@@ -44,7 +49,7 @@ abstract contract VZERC20 {
         }
     }
 
-    function approve(address spender, uint256 amount) public returns (bool) {
+    function approve(address spender, uint256 amount) public virtual returns (bool) {
         assembly ("memory-safe") {
             mstore(0x20, spender)
             mstore(0x0c, _ALLOWANCE_SLOT_SEED)
@@ -56,7 +61,7 @@ abstract contract VZERC20 {
         return true;
     }
 
-    function transfer(address to, uint256 amount) public returns (bool) {
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
         assembly ("memory-safe") {
             mstore(0x0c, _BALANCE_SLOT_SEED)
             mstore(0x00, caller())
@@ -76,7 +81,7 @@ abstract contract VZERC20 {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public virtual returns (bool) {
         assembly ("memory-safe") {
             let from_ := shl(96, from)
             mstore(0x20, caller())
@@ -107,7 +112,7 @@ abstract contract VZERC20 {
         return true;
     }
 
-    function _mint(address to, uint256 amount) internal {
+    function _mint(address to, uint256 amount) internal virtual {
         assembly ("memory-safe") {
             let totalSupplyBefore := sload(_TOTAL_SUPPLY_SLOT)
             let totalSupplyAfter := add(totalSupplyBefore, amount)
@@ -125,7 +130,7 @@ abstract contract VZERC20 {
         }
     }
 
-    function _burn(address from, uint256 amount) internal {
+    function _burn(address from, uint256 amount) internal virtual {
         assembly ("memory-safe") {
             mstore(0x0c, _BALANCE_SLOT_SEED)
             mstore(0x00, from)
