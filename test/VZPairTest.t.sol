@@ -2,8 +2,10 @@
 pragma solidity ^0.8.10;
 
 import "forge-std/Test.sol";
-import {VZPair, VZFactory, UQ112x112} from "../src/VZFactory.sol";
 import "@solady/test/utils/mocks/MockERC20.sol";
+
+import {VZPair, UQ112x112} from "../src/VZPair.sol";
+import {VZFactory} from "../src/VZFactory.sol";
 
 /// @dev Forked from Zuniswap (https://github.com/Jeiwan/zuniswapv2/blob/main/test/ZuniswapV2Pair.t.sol).
 contract VZPairTest is Test {
