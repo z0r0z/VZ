@@ -236,9 +236,8 @@ contract VZPair is VZERC20 {
 
     /// @dev Force reserves to match balances.
     function sync() public lock {
-        bool ethBased = token0 == address(0);
         _update(
-            ethBased ? address(this).balance : getBalanceOf(token0, address(this)),
+            token0 == address(0) ? address(this).balance : getBalanceOf(token0, address(this)),
             getBalanceOf(token1, address(this)),
             _reserve0,
             _reserve1
