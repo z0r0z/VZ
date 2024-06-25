@@ -21,8 +21,6 @@ contract VZERC20 is ERC20 {
 /// @notice Contemporary Uniswap V2 Pair (VZ).
 /// @author z0r0z.eth
 contract VZPair is VZERC20, ReentrancyGuard {
-    using UQ112x112 for uint224;
-
     uint256 constant MINIMUM_LIQUIDITY = 1000;
 
     address public immutable token0;
@@ -75,10 +73,8 @@ contract VZPair is VZERC20, ReentrancyGuard {
             uint32 timeElapsed = blockTimestamp - _blockTimestampLast; // Overflow is desired.
             if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
                 // * never overflows, and + overflow is desired.
-                price0CumulativeLast +=
-                    uint256(UQ112x112.encode(reserve1).uqdiv(reserve0)) * timeElapsed;
-                price1CumulativeLast +=
-                    uint256(UQ112x112.encode(reserve0).uqdiv(reserve1)) * timeElapsed;
+                price0CumulativeLast += uint256(uqdiv(encode(reserve1), reserve0)) * timeElapsed;
+                price1CumulativeLast += uint256(uqdiv(encode(reserve0), reserve1)) * timeElapsed;
             }
             _blockTimestampLast = blockTimestamp;
             emit Sync(_reserve0 = uint112(balance0), _reserve1 = uint112(balance1));
@@ -264,19 +260,14 @@ interface IVZCallee {
         external;
 }
 
-/// @dev A library for handling binary fixed point numbers (https://en.wikipedia.org/wiki/Q_(number_format)).
-// range: [0, 2**112 - 1]
-// resolution: 1 / 2**112
-library UQ112x112 {
-    uint224 internal constant Q112 = 2 ** 112;
+uint224 constant Q112 = 2 ** 112;
 
-    /// @dev Encode a uint112 as a UQ112x112.
-    function encode(uint112 y) internal pure returns (uint224 z) {
-        z = uint224(y) * Q112; // never overflows
-    }
+/// @dev Encode a uint112 as a UQ112x112.
+function encode(uint112 y) pure returns (uint224 z) {
+    z = uint224(y) * Q112; // never overflows
+}
 
-    /// @dev Divide a UQ112x112 by a uint112, returning a UQ112x112.
-    function uqdiv(uint224 x, uint112 y) internal pure returns (uint224 z) {
-        z = x / uint224(y);
-    }
+/// @dev Divide a UQ112x112 by a uint112, returning a UQ112x112.
+function uqdiv(uint224 x, uint112 y) pure returns (uint224 z) {
+    z = x / uint224(y);
 }

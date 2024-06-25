@@ -4,7 +4,7 @@ pragma solidity ^0.8.10;
 import "forge-std/Test.sol";
 import "@solady/test/utils/mocks/MockERC20.sol";
 
-import {VZPair, UQ112x112} from "../src/VZPair.sol";
+import {VZPair} from "../src/VZPair.sol";
 import {VZFactory} from "../src/VZFactory.sol";
 
 /// @dev Forked from Zuniswap (https://github.com/Jeiwan/zuniswapv2/blob/main/test/ZuniswapV2Pair.t.sol).
@@ -53,19 +53,19 @@ contract VZPairTest is Test {
         encoded = abi.encodeWithSignature(error, a);
     }
 
-    function assertReserves(uint112 expectedReserve0, uint112 expectedReserve1) internal {
+    function assertReserves(uint112 expectedReserve0, uint112 expectedReserve1) internal view {
         (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
 
-    function assertReservesETH(uint112 expectedReserve0, uint112 expectedReserve1) internal {
+    function assertReservesETH(uint112 expectedReserve0, uint112 expectedReserve1) internal view {
         (uint112 reserve0, uint112 reserve1,) = ethPair.getReserves();
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
 
-    function assertCumulativePrices(uint256 expectedPrice0, uint256 expectedPrice1) internal {
+    function assertCumulativePrices(uint256 expectedPrice0, uint256 expectedPrice1) internal view {
         assertEq(pair.price0CumulativeLast(), expectedPrice0, "unexpected cumulative price 0");
         assertEq(pair.price1CumulativeLast(), expectedPrice1, "unexpected cumulative price 1");
     }
@@ -76,7 +76,7 @@ contract VZPairTest is Test {
         price1 = reserve1 > 0 ? (reserve0 * uint256(UQ112x112.Q112)) / reserve1 : 0;
     }
 
-    function assertBlockTimestampLast(uint32 expected) internal {
+    function assertBlockTimestampLast(uint32 expected) internal view {
         (,, uint32 blockTimestampLast) = pair.getReserves();
 
         assertEq(blockTimestampLast, expected, "unexpected blockTimestampLast");
@@ -527,12 +527,7 @@ contract Flashloaner {
         );
     }
 
-    function uniswapV2Call(
-        address sender,
-        uint256 amount0Out,
-        uint256 amount1Out,
-        bytes calldata data
-    ) public {
+    function uniswapV2Call(address, uint256, uint256, bytes calldata data) public {
         address tokenAddress = abi.decode(data, (address));
         uint256 balance = ERC20(tokenAddress).balanceOf(address(this));
 
@@ -542,6 +537,24 @@ contract Flashloaner {
     }
 }
 
+/// @dev Basic ERC20 token interface.
 interface IERC20 {
     function balanceOf(address) external returns (uint256);
+}
+
+/// @dev A library for handling binary fixed point numbers (https://en.wikipedia.org/wiki/Q_(number_format)).
+/// range: [0, 2**112 - 1]
+/// resolution: 1 / 2**112
+library UQ112x112 {
+    uint224 internal constant Q112 = 2 ** 112;
+
+    /// @dev Encode a uint112 as a UQ112x112.
+    function encode(uint112 y) internal pure returns (uint224 z) {
+        z = uint224(y) * Q112; // never overflows
+    }
+
+    /// @dev Divide a UQ112x112 by a uint112, returning a UQ112x112.
+    function uqdiv(uint224 x, uint112 y) internal pure returns (uint224 z) {
+        z = x / uint224(y);
+    }
 }
