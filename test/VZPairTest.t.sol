@@ -137,7 +137,7 @@ contract VZPairTest is Test {
         token0.transfer(address(pair), 1000);
         token1.transfer(address(pair), 1000);
 
-        vm.expectRevert(encodeError("INSUFFICIENT_LIQUIDITY_MINTED()"));
+        vm.expectRevert(encodeError("InsufficientLiquidityMinted()"));
         pair.mint(address(this));
     }
 
@@ -228,7 +228,7 @@ contract VZPairTest is Test {
         pair.mint(address(this));
 
         vm.prank(address(0xdeadbeef));
-        vm.expectRevert(encodeError("INSUFFICIENT_LIQUIDITY_BURNED()"));
+        vm.expectRevert(encodeError("InsufficientLiquidityBurned()"));
         pair.burn(address(this));
     }
 
@@ -334,7 +334,7 @@ contract VZPairTest is Test {
         token1.transfer(address(pair), 2 ether);
         pair.mint(address(this));
 
-        vm.expectRevert(encodeError("INSUFFICIENT_OUTPUT_AMOUNT()"));
+        vm.expectRevert(encodeError("InsufficientOutputAmount()"));
         pair.swap(0, 0, address(this), "");
     }
 
@@ -343,10 +343,10 @@ contract VZPairTest is Test {
         token1.transfer(address(pair), 2 ether);
         pair.mint(address(this));
 
-        vm.expectRevert(encodeError("INSUFFICIENT_LIQUIDITY()"));
+        vm.expectRevert(encodeError("InsufficientLiquidity()"));
         pair.swap(0, 2.1 ether, address(this), "");
 
-        vm.expectRevert(encodeError("INSUFFICIENT_LIQUIDITY()"));
+        vm.expectRevert(encodeError("InsufficientLiquidity()"));
         pair.swap(1.1 ether, 0, address(this), "");
     }
 

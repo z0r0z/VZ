@@ -101,13 +101,13 @@ contract VZERC20Test is SoladyTest {
 
     function testMintOverMaxUintReverts() public {
         token.mint(address(this), type(uint256).max);
-        vm.expectRevert(VZERC20.TotalSupplyOverflow.selector);
+        vm.expectRevert(MockVZERC20.TotalSupplyOverflow.selector);
         token.mint(address(this), 1);
     }
 
     function testTransferInsufficientBalanceReverts() public {
         token.mint(address(this), 0.9e18);
-        vm.expectRevert(VZERC20.InsufficientBalance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientBalance.selector);
         token.transfer(address(0xBEEF), 1e18);
     }
 
@@ -119,7 +119,7 @@ contract VZERC20Test is SoladyTest {
         vm.prank(from);
         token.approve(address(this), 0.9e18);
 
-        vm.expectRevert(VZERC20.InsufficientAllowance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientAllowance.selector);
         token.transferFrom(from, address(0xBEEF), 1e18);
     }
 
@@ -131,7 +131,7 @@ contract VZERC20Test is SoladyTest {
         vm.prank(from);
         token.approve(address(this), 1e18);
 
-        vm.expectRevert(VZERC20.InsufficientBalance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientBalance.selector);
         token.transferFrom(from, address(0xBEEF), 1e18);
     }
 
@@ -220,7 +220,7 @@ contract VZERC20Test is SoladyTest {
         burnAmount = _bound(burnAmount, mintAmount + 1, type(uint256).max);
 
         token.mint(to, mintAmount);
-        vm.expectRevert(VZERC20.InsufficientBalance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientBalance.selector);
         token.burn(to, burnAmount);
     }
 
@@ -233,7 +233,7 @@ contract VZERC20Test is SoladyTest {
         sendAmount = _bound(sendAmount, mintAmount + 1, type(uint256).max);
 
         token.mint(address(this), mintAmount);
-        vm.expectRevert(VZERC20.InsufficientBalance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientBalance.selector);
         token.transfer(to, sendAmount);
     }
 
@@ -252,7 +252,7 @@ contract VZERC20Test is SoladyTest {
         vm.prank(from);
         token.approve(address(this), approval);
 
-        vm.expectRevert(VZERC20.InsufficientAllowance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientAllowance.selector);
         token.transferFrom(from, to, amount);
     }
 
@@ -271,7 +271,7 @@ contract VZERC20Test is SoladyTest {
         vm.prank(from);
         token.approve(address(this), sendAmount);
 
-        vm.expectRevert(VZERC20.InsufficientBalance.selector);
+        vm.expectRevert(MockVZERC20.InsufficientBalance.selector);
         token.transferFrom(from, to, sendAmount);
     }
 }

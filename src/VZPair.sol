@@ -22,19 +22,13 @@ contract VZPair is VZERC20 {
     uint256 public price1CumulativeLast;
     uint256 public kLast; // `reserve0` * `reserve1`, as of immediately after the most recent liquidity event.
 
-    /// @dev Equivalent to: `uint72(bytes9(keccak256("_REENTRANCY_GUARD_SLOT")))`.
-    /// 9 bytes is large enough to avoid collisions in practice,
-    /// but not too large to result in excessive bytecode bloat.
+    // Soledge guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol)
     uint256 constant _REENTRANCY_GUARD_SLOT = 0x929eee149b4bd21268;
 
-    /// @dev Unauthorized reentrant call.
-    error Reentrancy();
-
-    /// @dev Guards a function from reentrancy.
     modifier lock() {
         assembly ("memory-safe") {
             if tload(_REENTRANCY_GUARD_SLOT) {
-                mstore(0x00, 0xab143c06) // `Reentrancy()`.
+                mstore(0x00, 0xab143c06)
                 revert(0x1c, 0x04)
             }
             tstore(_REENTRANCY_GUARD_SLOT, address())
@@ -71,14 +65,14 @@ contract VZPair is VZERC20 {
         _factory = msg.sender;
     }
 
-    error OVERFLOW();
+    error Overflow();
 
     /// @dev Update reserves and, on the first call per block, price accumulators.
     function _update(uint256 balance0, uint256 balance1, uint112 reserve0, uint112 reserve1)
         internal
     {
         unchecked {
-            if (balance0 > type(uint112).max || balance1 > type(uint112).max) revert OVERFLOW();
+            if (balance0 > type(uint112).max || balance1 > type(uint112).max) revert Overflow();
             uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
             uint32 timeElapsed = blockTimestamp - _blockTimestampLast; // Overflow is desired.
             if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
@@ -120,7 +114,7 @@ contract VZPair is VZERC20 {
         }
     }
 
-    error INSUFFICIENT_LIQUIDITY_MINTED();
+    error InsufficientLiquidityMinted();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to) public lock returns (uint256 liquidity) {
@@ -140,7 +134,7 @@ contract VZPair is VZERC20 {
         } else {
             liquidity = min(mulDiv(amount0, supply, reserve0), mulDiv(amount1, supply, reserve1));
         }
-        if (liquidity == 0) revert INSUFFICIENT_LIQUIDITY_MINTED();
+        if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, liquidity);
 
         _update(balance0, balance1, reserve0, reserve1);
@@ -148,7 +142,7 @@ contract VZPair is VZERC20 {
         emit Mint(msg.sender, amount0, amount1);
     }
 
-    error INSUFFICIENT_LIQUIDITY_BURNED();
+    error InsufficientLiquidityBurned();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function burn(address to) public lock returns (uint256 amount0, uint256 amount1) {
@@ -164,7 +158,7 @@ contract VZPair is VZERC20 {
         uint256 supply = totalSupply();
         amount0 = mulDiv(liquidity, balance0, supply); // Using balances ensures pro-rata distribution.
         amount1 = mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
-        if (amount0 == 0 || amount1 == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
+        if (amount0 == 0 || amount1 == 0) revert InsufficientLiquidityBurned();
         _burn(address(this), liquidity);
         ethBase ? safeTransferETH(to, amount0) : safeTransfer(_token0, to, amount0);
         safeTransfer(_token1, to, amount1);
@@ -176,10 +170,10 @@ contract VZPair is VZERC20 {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
-    error INSUFFICIENT_OUTPUT_AMOUNT();
-    error INSUFFICIENT_INPUT_AMOUNT();
-    error INSUFFICIENT_LIQUIDITY();
-    error INVALID_TO();
+    error InsufficientOutputAmount();
+    error InsufficientInputAmount();
+    error InsufficientLiquidity();
+    error InvalidTo();
     error K();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
@@ -187,14 +181,14 @@ contract VZPair is VZERC20 {
         public
         lock
     {
-        if (amount0Out == 0 && amount1Out == 0) revert INSUFFICIENT_OUTPUT_AMOUNT();
+        if (amount0Out == 0 && amount1Out == 0) revert InsufficientOutputAmount();
         (uint112 reserve0, uint112 reserve1,) = getReserves(); // Gas savings.
-        if (amount0Out >= reserve0 || amount1Out >= reserve1) revert INSUFFICIENT_LIQUIDITY();
+        if (amount0Out >= reserve0 || amount1Out >= reserve1) revert InsufficientLiquidity();
 
         address _token0 = token0;
         address _token1 = token1;
         bool ethBased = _token0 == address(0);
-        if (to == _token0 || to == _token1) revert INVALID_TO();
+        if (to == _token0 || to == _token1) revert InvalidTo();
         // Optimistically transfer tokens.
         if (amount0Out != 0) {
             ethBased ? safeTransferETH(to, amount0Out) : safeTransfer(_token0, to, amount0Out);
@@ -212,7 +206,7 @@ contract VZPair is VZERC20 {
             amount0In = balance0 > reserve0 - amount0Out ? balance0 - (reserve0 - amount0Out) : 0;
             amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
-        if (amount0In == 0 && amount1In == 0) revert INSUFFICIENT_INPUT_AMOUNT();
+        if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
 
         uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
         uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);

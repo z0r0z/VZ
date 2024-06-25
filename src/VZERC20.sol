@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: VPL
 pragma solidity 0.8.26;
 
-/// @notice Simple ERC20 + EIP-2612 implementation for VZ Pair.
+/// @notice Highly optimized ERC20 implementation for VZ Pair.
 /// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC20.sol)
+/// @dev For a better understanding of optimization choices and full documentation, consult Solady ERC20.
 abstract contract VZERC20 {
-    event Transfer(address indexed from, address indexed to, uint256 amount);
-    event Approval(address indexed from, address indexed to, uint256 amount);
-
-    error TotalSupplyOverflow();
-    error InsufficientBalance();
-    error InsufficientAllowance();
-
     uint256 constant _BALANCE_SLOT_SEED = 0x87a211a2;
     uint256 constant _ALLOWANCE_SLOT_SEED = 0x7f5e9f20;
     uint256 constant _TOTAL_SUPPLY_SLOT = 0x05345cdf77eb68f44c;
@@ -70,7 +64,7 @@ abstract contract VZERC20 {
             let fromBalanceSlot := keccak256(0x0c, 0x20)
             let fromBalance := sload(fromBalanceSlot)
             if gt(amount, fromBalance) {
-                mstore(0x00, 0xf4d678b8) // `InsufficientBalance()`.
+                mstore(0x00, 0xf4d678b8)
                 revert(0x1c, 0x04)
             }
             sstore(fromBalanceSlot, sub(fromBalance, amount))
@@ -96,7 +90,7 @@ abstract contract VZERC20 {
             let allowance_ := sload(allowanceSlot)
             if add(allowance_, 1) {
                 if gt(amount, allowance_) {
-                    mstore(0x00, 0x13be252b) // `InsufficientAllowance()`.
+                    mstore(0x00, 0x13be252b)
                     revert(0x1c, 0x04)
                 }
                 sstore(allowanceSlot, sub(allowance_, amount))
@@ -105,7 +99,7 @@ abstract contract VZERC20 {
             let fromBalanceSlot := keccak256(0x0c, 0x20)
             let fromBalance := sload(fromBalanceSlot)
             if gt(amount, fromBalance) {
-                mstore(0x00, 0xf4d678b8) // `InsufficientBalance()`.
+                mstore(0x00, 0xf4d678b8)
                 revert(0x1c, 0x04)
             }
             sstore(fromBalanceSlot, sub(fromBalance, amount))
@@ -123,7 +117,7 @@ abstract contract VZERC20 {
             let totalSupplyBefore := sload(_TOTAL_SUPPLY_SLOT)
             let totalSupplyAfter := add(totalSupplyBefore, amount)
             if lt(totalSupplyAfter, totalSupplyBefore) {
-                mstore(0x00, 0xe5cfe957) // `TotalSupplyOverflow()`.
+                mstore(0x00, 0xe5cfe957)
                 revert(0x1c, 0x04)
             }
             sstore(_TOTAL_SUPPLY_SLOT, totalSupplyAfter)
@@ -143,7 +137,7 @@ abstract contract VZERC20 {
             let fromBalanceSlot := keccak256(0x0c, 0x20)
             let fromBalance := sload(fromBalanceSlot)
             if gt(amount, fromBalance) {
-                mstore(0x00, 0xf4d678b8) // `InsufficientBalance()`.
+                mstore(0x00, 0xf4d678b8)
                 revert(0x1c, 0x04)
             }
             sstore(fromBalanceSlot, sub(fromBalance, amount))

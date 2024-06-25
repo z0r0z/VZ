@@ -7,6 +7,10 @@ import {Brutalizer} from "@solady/test/utils/Brutalizer.sol";
 /// @dev WARNING! This mock is strictly intended for testing purposes only.
 /// Do NOT copy anything here into production code unless you really know what you are doing.
 contract MockVZERC20 is VZERC20, Brutalizer {
+    error TotalSupplyOverflow();
+    error InsufficientBalance();
+    error InsufficientAllowance();
+
     function mint(address to, uint256 value) public virtual {
         _mint(_brutalized(to), value);
     }
