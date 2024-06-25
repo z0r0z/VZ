@@ -1,4 +1,4 @@
-ERC20Invariants:invariantBalanceSum() (runs: 256, calls: 128000, reverts: 78644)
+ERC20Invariants:invariantBalanceSum() (runs: 256, calls: 128000, reverts: 78722)
 ERC20Invariants:test__codesize() (gas: 5914)
 VZERC20Test:testApprove() (gas: 35531)
 VZERC20Test:testApprove(address,uint256) (runs: 259, μ: 31222, ~: 31376)

@@ -50,12 +50,12 @@ contract VZFactoryTest is Test {
     function testCreatePairPairExists() public {
         factory.createPair(address(token1), address(token0));
 
-        vm.expectRevert(encodeError("PAIR_EXISTS()"));
+        vm.expectRevert(encodeError("PairExists()"));
         factory.createPair(address(token1), address(token0));
     }
 
     function testCreatePairIdenticalTokens() public {
-        vm.expectRevert(encodeError("IDENTICAL_ADDRESSES()"));
+        vm.expectRevert(encodeError("IdenticalAddresses()"));
         factory.createPair(address(token0), address(token0));
     }
 }

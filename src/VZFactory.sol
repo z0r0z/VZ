@@ -22,13 +22,13 @@ contract VZFactory {
         return allPairs.length;
     }
 
-    error IDENTICAL_ADDRESSES();
-    error PAIR_EXISTS();
+    error IdenticalAddresses();
+    error PairExists();
 
     function createPair(address tokenA, address tokenB) public returns (address pair) {
-        if (tokenA == tokenB) revert IDENTICAL_ADDRESSES();
+        if (tokenA == tokenB) revert IdenticalAddresses();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        if (getPair[token0][token1] != address(0)) revert PAIR_EXISTS();
+        if (getPair[token0][token1] != address(0)) revert PairExists();
         pair =
             address(new VZPair{salt: keccak256(abi.encodePacked(token0, token1))}(token0, token1));
         getPair[token0][token1] = pair;
@@ -37,15 +37,15 @@ contract VZFactory {
         emit PairCreated(token0, token1, pair, allPairs.length);
     }
 
-    error FORBIDDEN();
+    error Forbidden();
 
     function setFeeTo(address _feeTo) public payable {
-        if (msg.sender != feeToSetter) revert FORBIDDEN();
+        if (msg.sender != feeToSetter) revert Forbidden();
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) public payable {
-        if (msg.sender != feeToSetter) revert FORBIDDEN();
+        if (msg.sender != feeToSetter) revert Forbidden();
         feeToSetter = _feeToSetter;
     }
 }
