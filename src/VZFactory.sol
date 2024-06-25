@@ -188,27 +188,24 @@ contract VZPair is VZERC20, ReentrancyGuard {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // Gas savings.
         if (amount0Out >= _reserve0 || amount1Out >= _reserve1) revert INSUFFICIENT_LIQUIDITY();
 
-        uint256 balance0;
-        uint256 balance1;
-        bool ethBase = token0 == address(0);
-        {
-            // Scope for _token{0,1}, avoids stack too deep errors.
-            address _token0 = token0;
-            address _token1 = token1;
-            if (to == _token0 || to == _token1) revert INVALID_TO();
-            if (amount0Out != 0) {
-                ethBase
-                    ? SafeTransferLib.safeTransferETH(to, amount0Out)
-                    : SafeTransferLib.safeTransfer(_token0, to, amount0Out);
-            } // Optimistically transfer tokens.
-            if (amount1Out != 0) SafeTransferLib.safeTransfer(_token1, to, amount1Out); // Optimistically transfer tokens.
-            if (data.length != 0) {
-                IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
-            }
-            balance0 =
-                ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
-            balance1 = SafeTransferLib.balanceOf(_token1, address(this));
+        address _token0 = token0;
+        address _token1 = token1;
+        bool ethBase = _token0 == address(0);
+        if (to == _token0 || to == _token1) revert INVALID_TO();
+        if (amount0Out != 0) {
+            // Optimistically transfer tokens.
+            ethBase
+                ? SafeTransferLib.safeTransferETH(to, amount0Out)
+                : SafeTransferLib.safeTransfer(_token0, to, amount0Out);
         }
+        if (amount1Out != 0) SafeTransferLib.safeTransfer(_token1, to, amount1Out); // Optimistically transfer tokens.
+        if (data.length != 0) {
+            IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
+        }
+        uint256 balance0 =
+            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
+        uint256 balance1 = SafeTransferLib.balanceOf(_token1, address(this));
+
         uint256 amount0In;
         uint256 amount1In;
         unchecked {
@@ -216,15 +213,14 @@ contract VZPair is VZERC20, ReentrancyGuard {
             amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
         }
         if (amount0In == 0 && amount1In == 0) revert INSUFFICIENT_INPUT_AMOUNT();
+
+        uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
+        uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+        if ((balance0Adjusted * balance1Adjusted) < (uint256(_reserve0) * _reserve1) * (1000 ** 2))
         {
-            // Scope for reserve{0,1}Adjusted, avoids stack too deep errors.
-            uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
-            uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
-            if (
-                (balance0Adjusted * balance1Adjusted)
-                    < (uint256(_reserve0) * _reserve1) * (1000 ** 2)
-            ) revert K();
+            revert K();
         }
+
         _update(balance0, balance1, _reserve0, _reserve1);
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
@@ -253,6 +249,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
             reserve1
         );
     }
+
+    /// @dev Receive native tokens.
+    receive() external payable {}
 }
 
 /// @notice Contemporary Uniswap V2 Factory (VZ).

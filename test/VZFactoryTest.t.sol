@@ -30,7 +30,7 @@ contract VZFactoryTest is Test {
     function testCreatePair() public {
         address pairAddress = factory.createPair(address(token1), address(token0));
 
-        VZPair pair = VZPair(pairAddress);
+        VZPair pair = VZPair(payable(pairAddress));
 
         assertEq(pair.token0(), address(token0));
         assertEq(pair.token1(), address(token1));
@@ -40,7 +40,7 @@ contract VZFactoryTest is Test {
         address tokenB = address(1);
         address pairAddress = factory.createPair(address(0), tokenB);
 
-        VZPair pair = VZPair(pairAddress);
+        VZPair pair = VZPair(payable(pairAddress));
 
         assertEq(pair.token0(), address(0));
         assertEq(pair.token1(), tokenB);
