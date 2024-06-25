@@ -29,9 +29,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
     address public immutable token0;
     address public immutable token1;
 
-    uint112 internal reserve0;
-    uint112 internal reserve1;
-    uint32 internal blockTimestampLast;
+    uint112 internal _reserve0;
+    uint112 internal _reserve1;
+    uint32 internal _blockTimestampLast;
 
     uint256 public price0CumulativeLast;
     uint256 public price1CumulativeLast;
@@ -40,9 +40,9 @@ contract VZPair is VZERC20, ReentrancyGuard {
     function getReserves()
         public
         view
-        returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast)
+        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
     {
-        (_reserve0, _reserve1, _blockTimestampLast) = (reserve0, reserve1, blockTimestampLast);
+        (reserve0, reserve1, blockTimestampLast) = (_reserve0, _reserve1, _blockTimestampLast);
     }
 
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
@@ -66,28 +66,28 @@ contract VZPair is VZERC20, ReentrancyGuard {
     error OVERFLOW();
 
     /// @dev Update reserves and, on the first call per block, price accumulators.
-    function _update(uint256 balance0, uint256 balance1, uint112 _reserve0, uint112 _reserve1)
+    function _update(uint256 balance0, uint256 balance1, uint112 reserve0, uint112 reserve1)
         internal
     {
         unchecked {
             if (balance0 > type(uint112).max || balance1 > type(uint112).max) revert OVERFLOW();
             uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
-            uint32 timeElapsed = blockTimestamp - blockTimestampLast; // Overflow is desired.
-            if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
+            uint32 timeElapsed = blockTimestamp - _blockTimestampLast; // Overflow is desired.
+            if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
                 // * never overflows, and + overflow is desired.
                 price0CumulativeLast +=
-                    uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) * timeElapsed;
+                    uint256(UQ112x112.encode(reserve1).uqdiv(reserve0)) * timeElapsed;
                 price1CumulativeLast +=
-                    uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) * timeElapsed;
+                    uint256(UQ112x112.encode(reserve0).uqdiv(reserve1)) * timeElapsed;
             }
-            (reserve0, reserve1, blockTimestampLast) =
+            (_reserve0, _reserve1, _blockTimestampLast) =
                 (uint112(balance0), uint112(balance1), blockTimestamp);
-            emit Sync(reserve0, reserve1);
+            emit Sync(_reserve0, _reserve1);
         }
     }
 
     /// @dev If fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k).
-    function _mintFee(uint112 _reserve0, uint112 _reserve1) internal returns (bool feeOn) {
+    function _mintFee(uint112 reserve0, uint112 reserve1) internal returns (bool feeOn) {
         address feeTo;
         address factory = _factory;
         assembly ("memory-safe") {
@@ -99,7 +99,7 @@ contract VZPair is VZERC20, ReentrancyGuard {
         uint256 _kLast = kLast; // Gas savings.
         if (feeOn) {
             if (_kLast != 0) {
-                uint256 rootK = FixedPointMathLib.sqrt(uint256(_reserve0) * _reserve1);
+                uint256 rootK = FixedPointMathLib.sqrt(uint256(reserve0) * reserve1);
                 uint256 rootKLast = FixedPointMathLib.sqrt(_kLast);
                 if (rootK > rootKLast) {
                     uint256 numerator = totalSupply() * (rootK - rootKLast);
@@ -119,31 +119,31 @@ contract VZPair is VZERC20, ReentrancyGuard {
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to) public nonReentrant returns (uint256 liquidity) {
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // Gas savings.
+        (uint112 reserve0, uint112 reserve1,) = getReserves(); // Gas savings.
         uint256 balance0 = token0 == address(0)
             ? address(this).balance
             : SafeTransferLib.balanceOf(token0, address(this));
         uint256 balance1 = SafeTransferLib.balanceOf(token1, address(this));
-        uint256 amount0 = balance0 - _reserve0;
-        uint256 amount1 = balance1 - _reserve1;
+        uint256 amount0 = balance0 - reserve0;
+        uint256 amount1 = balance1 - reserve1;
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
+        bool feeOn = _mintFee(reserve0, reserve1);
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
-        uint256 _totalSupply = totalSupply();
-        if (_totalSupply == 0) {
+        uint256 supply = totalSupply();
+        if (supply == 0) {
             liquidity = FixedPointMathLib.sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             _mint(address(0), MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
         } else {
             liquidity = FixedPointMathLib.min(
-                FixedPointMathLib.mulDiv(amount0, _totalSupply, _reserve0),
-                FixedPointMathLib.mulDiv(amount1, _totalSupply, _reserve1)
+                FixedPointMathLib.mulDiv(amount0, supply, reserve0),
+                FixedPointMathLib.mulDiv(amount1, supply, reserve1)
             );
         }
         if (liquidity == 0) revert INSUFFICIENT_LIQUIDITY_MINTED();
         _mint(to, liquidity);
 
-        _update(balance0, balance1, _reserve0, _reserve1);
-        if (feeOn) kLast = uint256(reserve0) * reserve1; // `reserve0` and `reserve1` are up-to-date.
+        _update(balance0, balance1, reserve0, reserve1);
+        if (feeOn) kLast = uint256(_reserve0) * _reserve1; // `_reserve0` and `_reserve1` are up-to-date.
         emit Mint(msg.sender, amount0, amount1);
     }
 
@@ -151,7 +151,7 @@ contract VZPair is VZERC20, ReentrancyGuard {
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function burn(address to) public nonReentrant returns (uint256 amount0, uint256 amount1) {
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves();
+        (uint112 reserve0, uint112 reserve1,) = getReserves();
         (address _token0, address _token1) = (token0, token1);
         bool ethBase = token0 == address(0);
         uint256 balance0 =
@@ -159,11 +159,11 @@ contract VZPair is VZERC20, ReentrancyGuard {
         uint256 balance1 = SafeTransferLib.balanceOf(_token1, address(this));
         uint256 liquidity = balanceOf(address(this));
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
+        bool feeOn = _mintFee(reserve0, reserve1);
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
-        uint256 _totalSupply = totalSupply();
-        amount0 = FixedPointMathLib.mulDiv(liquidity, balance0, _totalSupply); // Using balances ensures pro-rata distribution.
-        amount1 = FixedPointMathLib.mulDiv(liquidity, balance1, _totalSupply); // Using balances ensures pro-rata distribution.
+        uint256 supply = totalSupply();
+        amount0 = FixedPointMathLib.mulDiv(liquidity, balance0, supply); // Using balances ensures pro-rata distribution.
+        amount1 = FixedPointMathLib.mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0 || amount1 == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
         _burn(address(this), liquidity);
         ethBase
@@ -174,8 +174,8 @@ contract VZPair is VZERC20, ReentrancyGuard {
             ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
         balance1 = SafeTransferLib.balanceOf(_token1, address(this));
 
-        _update(balance0, balance1, _reserve0, _reserve1);
-        if (feeOn) kLast = uint256(reserve0) * reserve1; // `reserve0` and `reserve1` are up-to-date.
+        _update(balance0, balance1, reserve0, reserve1);
+        if (feeOn) kLast = uint256(_reserve0) * _reserve1; // `_reserve0` and `_reserve1` are up-to-date.
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
@@ -191,43 +191,42 @@ contract VZPair is VZERC20, ReentrancyGuard {
         nonReentrant
     {
         if (amount0Out == 0 && amount1Out == 0) revert INSUFFICIENT_OUTPUT_AMOUNT();
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // Gas savings.
-        if (amount0Out >= _reserve0 || amount1Out >= _reserve1) revert INSUFFICIENT_LIQUIDITY();
+        (uint112 reserve0, uint112 reserve1,) = getReserves(); // Gas savings.
+        if (amount0Out >= reserve0 || amount1Out >= reserve1) revert INSUFFICIENT_LIQUIDITY();
 
         address _token0 = token0;
         address _token1 = token1;
-        bool ethBase = _token0 == address(0);
+        bool ethBased = _token0 == address(0);
         if (to == _token0 || to == _token1) revert INVALID_TO();
+        // Optimistically transfer tokens.
         if (amount0Out != 0) {
-            // Optimistically transfer tokens.
-            ethBase
+            ethBased
                 ? SafeTransferLib.safeTransferETH(to, amount0Out)
                 : SafeTransferLib.safeTransfer(_token0, to, amount0Out);
         }
-        if (amount1Out != 0) SafeTransferLib.safeTransfer(_token1, to, amount1Out); // Optimistically transfer tokens.
+        if (amount1Out != 0) SafeTransferLib.safeTransfer(_token1, to, amount1Out);
         if (data.length != 0) {
             IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
         }
         uint256 balance0 =
-            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
+            ethBased ? address(this).balance : SafeTransferLib.balanceOf(_token0, address(this));
         uint256 balance1 = SafeTransferLib.balanceOf(_token1, address(this));
 
         uint256 amount0In;
         uint256 amount1In;
         unchecked {
-            amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
-            amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
+            amount0In = balance0 > reserve0 - amount0Out ? balance0 - (reserve0 - amount0Out) : 0;
+            amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
         if (amount0In == 0 && amount1In == 0) revert INSUFFICIENT_INPUT_AMOUNT();
 
         uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
         uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
-        if ((balance0Adjusted * balance1Adjusted) < (uint256(_reserve0) * _reserve1) * (1000 ** 2))
-        {
+        if (balance0Adjusted * balance1Adjusted < (uint256(reserve0) * reserve1) * 1000 ** 2) {
             revert K();
         }
 
-        _update(balance0, balance1, _reserve0, _reserve1);
+        _update(balance0, balance1, reserve0, reserve1);
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
@@ -236,33 +235,28 @@ contract VZPair is VZERC20, ReentrancyGuard {
         address _token0 = token0; // Gas savings.
         address _token1 = token1; // Gas savings.
         _token0 == address(0)
-            ? SafeTransferLib.safeTransferETH(to, address(this).balance - reserve0)
+            ? SafeTransferLib.safeTransferETH(to, address(this).balance - _reserve0)
             : SafeTransferLib.safeTransfer(
-                _token0, to, (SafeTransferLib.balanceOf(_token0, address(this))) - reserve0
+                _token0, to, (SafeTransferLib.balanceOf(_token0, address(this))) - _reserve0
             );
         SafeTransferLib.safeTransfer(
-            _token1, to, (SafeTransferLib.balanceOf(_token1, address(this))) - reserve1
+            _token1, to, (SafeTransferLib.balanceOf(_token1, address(this))) - _reserve1
         );
     }
 
     /// @dev Force reserves to match balances.
     function sync() public nonReentrant {
-        bool ethBase = token0 == address(0);
+        bool ethBased = token0 == address(0);
         _update(
-            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this)),
+            ethBased ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this)),
             SafeTransferLib.balanceOf(token1, address(this)),
-            reserve0,
-            reserve1
+            _reserve0,
+            _reserve1
         );
     }
 
     /// @dev Receive native tokens.
     receive() external payable {}
-}
-
-/// @dev Minimal VZ factory interface.
-interface IVZFactory {
-    function feeTo() external view returns (address);
 }
 
 /// @dev Minimal VZ swap call interface.
