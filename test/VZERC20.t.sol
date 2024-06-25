@@ -17,9 +17,11 @@ contract VZERC20Test is SoladyTest {
         token = new MockVZERC20();
     }
 
+    bytes32 public constant name = "VZLP";
+
     function testMetadata() public {
-        assertEq(token.name(), "VZ LP");
-        assertEq(token.symbol(), "VZLP");
+        assertEq(token.name(), name);
+        assertEq(token.symbol(), name);
         assertEq(token.decimals(), 18);
     }
 

@@ -13,8 +13,8 @@ abstract contract VZERC20 {
     uint256 constant _APPROVAL_EVENT_SIGNATURE =
         0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925;
 
-    string public constant name = "VZ LP";
-    string public constant symbol = "VZLP";
+    bytes32 public constant name = "VZLP";
+    bytes32 public constant symbol = name;
     uint256 public constant decimals = 18;
 
     function totalSupply() public view virtual returns (uint256 result) {
