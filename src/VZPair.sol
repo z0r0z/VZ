@@ -25,7 +25,7 @@ contract VZPair is VZERC20, ReentrancyGuard {
 
     uint256 internal constant MINIMUM_LIQUIDITY = 1000;
 
-    address internal immutable factory;
+    address internal immutable _factory;
     address public immutable token0;
     address public immutable token1;
 
@@ -58,7 +58,7 @@ contract VZPair is VZERC20, ReentrancyGuard {
     event Sync(uint112 reserve0, uint112 reserve1);
 
     constructor(address _token0, address _token1) payable {
-        factory = msg.sender;
+        _factory = msg.sender;
         token0 = _token0;
         token1 = _token1;
     }
@@ -88,7 +88,15 @@ contract VZPair is VZERC20, ReentrancyGuard {
 
     /// @dev If fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k).
     function _mintFee(uint112 _reserve0, uint112 _reserve1) internal returns (bool feeOn) {
-        address feeTo = IVZFactory(factory).feeTo();
+        address feeTo;
+        address factory = _factory;
+        assembly ("memory-safe") {
+            mstore(0x00, 0x017e7e58) // `feeTo()`.
+            if iszero(staticcall(gas(), factory, 0x1c, 0x04, 0x20, 0x20)) {
+                revert(codesize(), 0x00)
+            }
+            feeTo := mload(0x20)
+        }
         feeOn = feeTo != address(0);
         uint256 _kLast = kLast; // Gas savings.
         if (feeOn) {
