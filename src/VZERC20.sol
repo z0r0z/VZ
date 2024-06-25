@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: VPL
 pragma solidity 0.8.26;
 
+/// @notice Simple ERC20 + EIP-2612 implementation for VZ Pair.
+/// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC20.sol)
 abstract contract VZERC20 {
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed from, address indexed to, uint256 amount);
@@ -49,7 +51,7 @@ abstract contract VZERC20 {
         }
     }
 
-    function approve(address spender, uint256 amount) public virtual returns (bool) {
+    function approve(address spender, uint256 amount) public virtual returns (bool result) {
         assembly ("memory-safe") {
             mstore(0x20, spender)
             mstore(0x0c, _ALLOWANCE_SLOT_SEED)
@@ -57,11 +59,11 @@ abstract contract VZERC20 {
             sstore(keccak256(0x0c, 0x34), amount)
             mstore(0x00, amount)
             log3(0x00, 0x20, _APPROVAL_EVENT_SIGNATURE, caller(), shr(96, mload(0x2c)))
+            result := 1
         }
-        return true;
     }
 
-    function transfer(address to, uint256 amount) public virtual returns (bool) {
+    function transfer(address to, uint256 amount) public virtual returns (bool result) {
         assembly ("memory-safe") {
             mstore(0x0c, _BALANCE_SLOT_SEED)
             mstore(0x00, caller())
@@ -77,11 +79,15 @@ abstract contract VZERC20 {
             sstore(toBalanceSlot, add(sload(toBalanceSlot), amount))
             mstore(0x20, amount)
             log3(0x20, 0x20, _TRANSFER_EVENT_SIGNATURE, caller(), shr(96, mload(0x0c)))
+            result := 1
         }
-        return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) public virtual returns (bool) {
+    function transferFrom(address from, address to, uint256 amount)
+        public
+        virtual
+        returns (bool result)
+    {
         assembly ("memory-safe") {
             let from_ := shl(96, from)
             mstore(0x20, caller())
@@ -108,8 +114,8 @@ abstract contract VZERC20 {
             sstore(toBalanceSlot, add(sload(toBalanceSlot), amount))
             mstore(0x20, amount)
             log3(0x20, 0x20, _TRANSFER_EVENT_SIGNATURE, shr(96, from_), shr(96, mload(0x0c)))
+            result := 1
         }
-        return true;
     }
 
     function _mint(address to, uint256 amount) internal virtual {
