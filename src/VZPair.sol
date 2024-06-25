@@ -2,14 +2,12 @@
 pragma solidity 0.8.26;
 
 import "./VZERC20.sol";
-
-import "@solady/src/utils/SafeTransferLib.sol";
-import "@soledge/src/utils/ReentrancyGuard.sol";
-import "@solady/src/utils/FixedPointMathLib.sol";
+import "./utils/Math.sol";
+import "./utils/TransferHelper.sol";
 
 /// @notice Contemporary Uniswap V2 Pair (VZ).
 /// @author z0r0z.eth
-contract VZPair is VZERC20, ReentrancyGuard {
+contract VZPair is VZERC20 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
 
     address public immutable token0;
@@ -23,6 +21,29 @@ contract VZPair is VZERC20, ReentrancyGuard {
     uint256 public price0CumulativeLast;
     uint256 public price1CumulativeLast;
     uint256 public kLast; // `reserve0` * `reserve1`, as of immediately after the most recent liquidity event.
+
+    /// @dev Equivalent to: `uint72(bytes9(keccak256("_REENTRANCY_GUARD_SLOT")))`.
+    /// 9 bytes is large enough to avoid collisions in practice,
+    /// but not too large to result in excessive bytecode bloat.
+    uint256 constant _REENTRANCY_GUARD_SLOT = 0x929eee149b4bd21268;
+
+    /// @dev Unauthorized reentrant call.
+    error Reentrancy();
+
+    /// @dev Guards a function from reentrancy.
+    modifier lock() {
+        assembly ("memory-safe") {
+            if tload(_REENTRANCY_GUARD_SLOT) {
+                mstore(0x00, 0xab143c06) // `Reentrancy()`.
+                revert(0x1c, 0x04)
+            }
+            tstore(_REENTRANCY_GUARD_SLOT, address())
+        }
+        _;
+        assembly ("memory-safe") {
+            tstore(_REENTRANCY_GUARD_SLOT, 0)
+        }
+    }
 
     function getReserves()
         public
@@ -83,8 +104,8 @@ contract VZPair is VZERC20, ReentrancyGuard {
         uint256 _kLast = kLast; // Gas savings.
         if (feeOn) {
             if (_kLast != 0) {
-                uint256 rootK = FixedPointMathLib.sqrt(uint256(reserve0) * reserve1);
-                uint256 rootKLast = FixedPointMathLib.sqrt(_kLast);
+                uint256 rootK = sqrt(uint256(reserve0) * reserve1);
+                uint256 rootKLast = sqrt(_kLast);
                 if (rootK > rootKLast) {
                     uint256 numerator = totalSupply() * (rootK - rootKLast);
                     uint256 denominator = (rootK * 5) + rootKLast;
@@ -102,12 +123,11 @@ contract VZPair is VZERC20, ReentrancyGuard {
     error INSUFFICIENT_LIQUIDITY_MINTED();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function mint(address to) public nonReentrant returns (uint256 liquidity) {
+    function mint(address to) public lock returns (uint256 liquidity) {
         (uint112 reserve0, uint112 reserve1,) = getReserves(); // Gas savings.
-        uint256 balance0 = token0 == address(0)
-            ? address(this).balance
-            : SafeTransferLib.balanceOf(token0, address(this));
-        uint256 balance1 = SafeTransferLib.balanceOf(token1, address(this));
+        uint256 balance0 =
+            token0 == address(0) ? address(this).balance : getBalanceOf(token0, address(this));
+        uint256 balance1 = getBalanceOf(token1, address(this));
         uint256 amount0 = balance0 - reserve0;
         uint256 amount1 = balance1 - reserve1;
 
@@ -115,13 +135,10 @@ contract VZPair is VZERC20, ReentrancyGuard {
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
         uint256 supply = totalSupply();
         if (supply == 0) {
-            liquidity = FixedPointMathLib.sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+            liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             _mint(address(0), MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
         } else {
-            liquidity = FixedPointMathLib.min(
-                FixedPointMathLib.mulDiv(amount0, supply, reserve0),
-                FixedPointMathLib.mulDiv(amount1, supply, reserve1)
-            );
+            liquidity = min(mulDiv(amount0, supply, reserve0), mulDiv(amount1, supply, reserve1));
         }
         if (liquidity == 0) revert INSUFFICIENT_LIQUIDITY_MINTED();
         _mint(to, liquidity);
@@ -134,29 +151,25 @@ contract VZPair is VZERC20, ReentrancyGuard {
     error INSUFFICIENT_LIQUIDITY_BURNED();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function burn(address to) public nonReentrant returns (uint256 amount0, uint256 amount1) {
+    function burn(address to) public lock returns (uint256 amount0, uint256 amount1) {
         (uint112 reserve0, uint112 reserve1,) = getReserves();
         (address _token0, address _token1) = (token0, token1);
         bool ethBase = token0 == address(0);
-        uint256 balance0 =
-            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
-        uint256 balance1 = SafeTransferLib.balanceOf(_token1, address(this));
+        uint256 balance0 = ethBase ? address(this).balance : getBalanceOf(token0, address(this));
+        uint256 balance1 = getBalanceOf(_token1, address(this));
         uint256 liquidity = balanceOf(address(this));
 
         bool feeOn = _mintFee(reserve0, reserve1);
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
         uint256 supply = totalSupply();
-        amount0 = FixedPointMathLib.mulDiv(liquidity, balance0, supply); // Using balances ensures pro-rata distribution.
-        amount1 = FixedPointMathLib.mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
+        amount0 = mulDiv(liquidity, balance0, supply); // Using balances ensures pro-rata distribution.
+        amount1 = mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0 || amount1 == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
         _burn(address(this), liquidity);
-        ethBase
-            ? SafeTransferLib.safeTransferETH(to, amount0)
-            : SafeTransferLib.safeTransfer(_token0, to, amount0);
-        SafeTransferLib.safeTransfer(_token1, to, amount1);
-        balance0 =
-            ethBase ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this));
-        balance1 = SafeTransferLib.balanceOf(_token1, address(this));
+        ethBase ? safeTransferETH(to, amount0) : safeTransfer(_token0, to, amount0);
+        safeTransfer(_token1, to, amount1);
+        balance0 = ethBase ? address(this).balance : getBalanceOf(token0, address(this));
+        balance1 = getBalanceOf(_token1, address(this));
 
         _update(balance0, balance1, reserve0, reserve1);
         if (feeOn) kLast = uint256(_reserve0) * _reserve1; // `_reserve0` and `_reserve1` are up-to-date.
@@ -172,7 +185,7 @@ contract VZPair is VZERC20, ReentrancyGuard {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data)
         public
-        nonReentrant
+        lock
     {
         if (amount0Out == 0 && amount1Out == 0) revert INSUFFICIENT_OUTPUT_AMOUNT();
         (uint112 reserve0, uint112 reserve1,) = getReserves(); // Gas savings.
@@ -184,17 +197,14 @@ contract VZPair is VZERC20, ReentrancyGuard {
         if (to == _token0 || to == _token1) revert INVALID_TO();
         // Optimistically transfer tokens.
         if (amount0Out != 0) {
-            ethBased
-                ? SafeTransferLib.safeTransferETH(to, amount0Out)
-                : SafeTransferLib.safeTransfer(_token0, to, amount0Out);
+            ethBased ? safeTransferETH(to, amount0Out) : safeTransfer(_token0, to, amount0Out);
         }
-        if (amount1Out != 0) SafeTransferLib.safeTransfer(_token1, to, amount1Out);
+        if (amount1Out != 0) safeTransfer(_token1, to, amount1Out);
         if (data.length != 0) {
             IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
         }
-        uint256 balance0 =
-            ethBased ? address(this).balance : SafeTransferLib.balanceOf(_token0, address(this));
-        uint256 balance1 = SafeTransferLib.balanceOf(_token1, address(this));
+        uint256 balance0 = ethBased ? address(this).balance : getBalanceOf(_token0, address(this));
+        uint256 balance1 = getBalanceOf(_token1, address(this));
 
         uint256 amount0In;
         uint256 amount1In;
@@ -215,25 +225,21 @@ contract VZPair is VZERC20, ReentrancyGuard {
     }
 
     /// @dev Force balances to match reserves.
-    function skim(address to) public nonReentrant {
+    function skim(address to) public lock {
         address _token0 = token0; // Gas savings.
         address _token1 = token1; // Gas savings.
         _token0 == address(0)
-            ? SafeTransferLib.safeTransferETH(to, address(this).balance - _reserve0)
-            : SafeTransferLib.safeTransfer(
-                _token0, to, (SafeTransferLib.balanceOf(_token0, address(this))) - _reserve0
-            );
-        SafeTransferLib.safeTransfer(
-            _token1, to, (SafeTransferLib.balanceOf(_token1, address(this))) - _reserve1
-        );
+            ? safeTransferETH(to, address(this).balance - _reserve0)
+            : safeTransfer(_token0, to, (getBalanceOf(_token0, address(this))) - _reserve0);
+        safeTransfer(_token1, to, (getBalanceOf(_token1, address(this))) - _reserve1);
     }
 
     /// @dev Force reserves to match balances.
-    function sync() public nonReentrant {
+    function sync() public lock {
         bool ethBased = token0 == address(0);
         _update(
-            ethBased ? address(this).balance : SafeTransferLib.balanceOf(token0, address(this)),
-            SafeTransferLib.balanceOf(token1, address(this)),
+            ethBased ? address(this).balance : getBalanceOf(token0, address(this)),
+            getBalanceOf(token1, address(this)),
             _reserve0,
             _reserve1
         );
@@ -247,16 +253,4 @@ contract VZPair is VZERC20, ReentrancyGuard {
 interface IVZCallee {
     function uniswapV2Call(address sender, uint256 amount0, uint256 amount1, bytes calldata data)
         external;
-}
-
-uint224 constant Q112 = 2 ** 112;
-
-/// @dev Encode a uint112 as a UQ112x112.
-function encode(uint112 y) pure returns (uint224 z) {
-    z = uint224(y) * Q112; // never overflows
-}
-
-/// @dev Divide a UQ112x112 by a uint112, returning a UQ112x112.
-function uqdiv(uint224 x, uint112 y) pure returns (uint224 z) {
-    z = x / uint224(y);
 }
