@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.26;
 
-import "@solady/src/tokens/ERC20.sol";
+import "./VZERC20.sol";
+
 import "@solady/src/utils/SafeTransferLib.sol";
 import "@soledge/src/utils/ReentrancyGuard.sol";
 import "@solady/src/utils/FixedPointMathLib.sol";
-
-/// @notice Contemporary Uniswap V2 LP Token (VZ).
-/// @author z0r0z.eth
-contract VZERC20 is ERC20 {
-    function name() public view virtual override returns (string memory) {
-        return "VZ LP";
-    }
-
-    function symbol() public view virtual override returns (string memory) {
-        return "VZLP";
-    }
-}
 
 /// @notice Contemporary Uniswap V2 Pair (VZ).
 /// @author z0r0z.eth
