@@ -25,12 +25,15 @@ contract VZFactory {
     error IdenticalAddresses();
     error PairExists();
 
-    function createPair(address tokenA, address tokenB) public returns (address pair) {
+    function createPair(address tokenA, address tokenB) public payable returns (address pair) {
         if (tokenA == tokenB) revert IdenticalAddresses();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         if (getPair[token0][token1] != address(0)) revert PairExists();
-        pair =
-            address(new VZPair{salt: keccak256(abi.encodePacked(token0, token1))}(token0, token1));
+        pair = address(
+            new VZPair{salt: keccak256(abi.encodePacked(token0, token1)), value: msg.value}(
+                token0, token1
+            )
+        );
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // Populate mapping in the reverse direction.
         allPairs.push(pair);
