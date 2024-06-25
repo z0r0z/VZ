@@ -80,9 +80,8 @@ contract VZPair is VZERC20, ReentrancyGuard {
                 price1CumulativeLast +=
                     uint256(UQ112x112.encode(reserve0).uqdiv(reserve1)) * timeElapsed;
             }
-            (_reserve0, _reserve1, _blockTimestampLast) =
-                (uint112(balance0), uint112(balance1), blockTimestamp);
-            emit Sync(_reserve0, _reserve1);
+            _blockTimestampLast = blockTimestamp;
+            emit Sync(_reserve0 = uint112(balance0), _reserve1 = uint112(balance1));
         }
     }
 
