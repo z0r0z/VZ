@@ -107,7 +107,7 @@ contract VZPair is VZERC20 {
                 uint256 rootK = sqrt(uint256(reserve0) * reserve1);
                 uint256 rootKLast = sqrt(_kLast);
                 if (rootK > rootKLast) {
-                    uint256 numerator = totalSupply() * (rootK - rootKLast);
+                    uint256 numerator = totalSupply * (rootK - rootKLast);
                     uint256 denominator = (rootK * 5) + rootKLast;
                     unchecked {
                         uint256 liquidity = numerator / denominator;
@@ -133,7 +133,7 @@ contract VZPair is VZERC20 {
 
         bool feeOn = _mintFee(reserve0, reserve1);
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
-        uint256 supply = totalSupply();
+        uint256 supply = totalSupply;
         if (supply == 0) {
             liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             _mint(address(0), MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
@@ -157,11 +157,11 @@ contract VZPair is VZERC20 {
         bool ethBase = token0 == address(0);
         uint256 balance0 = ethBase ? address(this).balance : getBalanceOf(token0, address(this));
         uint256 balance1 = getBalanceOf(_token1, address(this));
-        uint256 liquidity = balanceOf(address(this));
+        uint256 liquidity = balanceOf[address(this)];
 
         bool feeOn = _mintFee(reserve0, reserve1);
         // Gas savings, must be defined here since `totalSupply` can update in `_mintFee()`.
-        uint256 supply = totalSupply();
+        uint256 supply = totalSupply;
         amount0 = mulDiv(liquidity, balance0, supply); // Using balances ensures pro-rata distribution.
         amount1 = mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0 || amount1 == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
