@@ -60,9 +60,7 @@ contract VZPair is VZERC20 {
     event Sync(uint112 reserve0, uint112 reserve1);
 
     constructor(address _token0, address _token1) payable {
-        token0 = _token0;
-        token1 = _token1;
-        _factory = msg.sender;
+        (token0, token1, _factory) = (_token0, _token1, msg.sender);
     }
 
     error Overflow();
