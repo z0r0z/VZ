@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: VPL
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
 /// @notice Highly optimized ERC20 implementation for VZ Pair.
