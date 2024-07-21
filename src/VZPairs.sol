@@ -8,9 +8,6 @@ import "./utils/TransferHelper.sol";
 contract VZPairs is VZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 10 ** 3;
 
-    address _feeTo;
-    address _feeToSetter;
-
     mapping(uint256 poolId => Pool) public pools;
 
     struct Pool {
@@ -76,7 +73,9 @@ contract VZPairs is VZERC6909 {
     event Sync(uint256 indexed poolId, uint112 reserve0, uint112 reserve1);
 
     constructor(address feeToSetter) payable {
-        _feeToSetter = feeToSetter;
+        assembly ("memory-safe") {
+            sstore(0x00, feeToSetter)
+        }
     }
 
     error IdenticalAddresses();
@@ -128,8 +127,11 @@ contract VZPairs is VZERC6909 {
         returns (bool feeOn)
     {
         Pool storage pool = pools[poolId];
-        address feeTo = _feeTo;
-        feeOn = feeTo != address(0);
+        address feeTo;
+        assembly ("memory-safe") {
+            feeTo := sload(0x20)
+            feeOn := iszero(iszero(feeTo))
+        }
         if (feeOn) {
             if (pool.kLast != 0) {
                 uint256 rootK = sqrt(uint256(reserve0) * reserve1);
@@ -297,21 +299,23 @@ contract VZPairs is VZERC6909 {
         );
     }
 
-    /// @dev Receive native tokens.
+    /// @dev Receive native token.
     receive() external payable {}
-
-    error Forbidden();
 
     /// @dev Set the recipient of protocol fees.
     function setFeeTo(address feeTo) public payable {
-        if (msg.sender != _feeToSetter) revert Forbidden();
-        _feeTo = feeTo;
+        assembly ("memory-safe") {
+            if iszero(eq(caller(), sload(0x00))) { revert(codesize(), codesize()) }
+            sstore(0x20, feeTo)
+        }
     }
 
     /// @dev Set the manager of protocol fees.
     function setFeeToSetter(address feeToSetter) public payable {
-        if (msg.sender != _feeToSetter) revert Forbidden();
-        _feeToSetter = feeToSetter;
+        assembly ("memory-safe") {
+            if iszero(eq(caller(), sload(0x00))) { revert(codesize(), codesize()) }
+            sstore(0x00, feeToSetter)
+        }
     }
 }
 
