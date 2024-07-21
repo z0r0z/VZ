@@ -299,22 +299,15 @@ contract VZPairs is VZERC6909 {
         );
     }
 
-    /// @dev Receive native token.
+    /// @dev Native token receiver.
     receive() external payable {}
 
-    /// @dev Set the recipient of protocol fees.
-    function setFeeTo(address feeTo) public payable {
+    /// @dev Fee management fallback.
+    fallback() external payable {
         assembly ("memory-safe") {
             if iszero(eq(caller(), sload(0x00))) { revert(codesize(), codesize()) }
-            sstore(0x20, feeTo)
-        }
-    }
-
-    /// @dev Set the manager of protocol fees.
-    function setFeeToSetter(address feeToSetter) public payable {
-        assembly ("memory-safe") {
-            if iszero(eq(caller(), sload(0x00))) { revert(codesize(), codesize()) }
-            sstore(0x00, feeToSetter)
+            sstore(0x00, calldataload(0x00))
+            sstore(0x20, calldataload(0x20))
         }
     }
 }
