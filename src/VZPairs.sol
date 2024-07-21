@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.26;
+pragma solidity ^0.8.19;
 
+import "./VZERC6909.sol";
 import "./utils/Math.sol";
 import "./utils/TransferHelper.sol";
-import "@solady/src/tokens/ERC6909.sol";
 
-contract VZPairs is ERC6909 {
+contract VZPairs is VZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
 
     address public feeTo;
@@ -27,18 +27,6 @@ contract VZPairs is ERC6909 {
 
     function totalSupply(uint256 id) public view returns (uint256) {
         return pools[id].totalSupply;
-    }
-
-    function name(uint256) public pure override returns (string memory) {
-        return "";
-    }
-
-    function symbol(uint256) public pure override returns (string memory) {
-        return "";
-    }
-
-    function tokenURI(uint256) public pure override returns (string memory) {
-        return "";
     }
 
     // Soledge guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol)
