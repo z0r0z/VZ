@@ -8,8 +8,8 @@ import "./utils/TransferHelper.sol";
 contract VZPairs is VZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
 
-    address public feeTo;
-    address public feeToSetter;
+    address _feeTo;
+    address _feeToSetter;
 
     mapping(uint256 id => Pool) public pools;
 
@@ -75,8 +75,8 @@ contract VZPairs is VZERC6909 {
     );
     event Sync(uint256 indexed pool, uint112 reserve0, uint112 reserve1);
 
-    constructor(address _feeToSetter) payable {
-        feeToSetter = _feeToSetter;
+    constructor(address feeToSetter) payable {
+        _feeToSetter = feeToSetter;
     }
 
     error Overflow();
@@ -112,8 +112,8 @@ contract VZPairs is VZERC6909 {
         returns (bool feeOn)
     {
         Pool storage pool = pools[id];
-        address _feeTo = feeTo;
-        feeOn = _feeTo != address(0);
+        address feeTo = _feeTo;
+        feeOn = feeTo != address(0);
         if (feeOn) {
             if (pool.kLast != 0) {
                 uint256 rootK = sqrt(uint256(reserve0) * reserve1);
@@ -124,7 +124,7 @@ contract VZPairs is VZERC6909 {
                     unchecked {
                         uint256 liquidity = numerator / denominator;
                         if (liquidity != 0) {
-                            _mint(_feeTo, id, liquidity);
+                            _mint(feeTo, id, liquidity);
                         }
                         pool.totalSupply += liquidity;
                     }
@@ -299,15 +299,15 @@ contract VZPairs is VZERC6909 {
     error Forbidden();
 
     /// @dev Set the recipient of protocol fees.
-    function setFeeTo(address _feeTo) public payable {
-        if (msg.sender != feeToSetter) revert Forbidden();
-        feeTo = _feeTo;
+    function setFeeTo(address feeTo) public payable {
+        if (msg.sender != _feeToSetter) revert Forbidden();
+        _feeTo = feeTo;
     }
 
     /// @dev Set the manager of protocol fees.
-    function setFeeToSetter(address _feeToSetter) public payable {
-        if (msg.sender != feeToSetter) revert Forbidden();
-        feeToSetter = _feeToSetter;
+    function setFeeToSetter(address feeToSetter) public payable {
+        if (msg.sender != _feeToSetter) revert Forbidden();
+        _feeToSetter = feeToSetter;
     }
 }
 
