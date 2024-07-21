@@ -6,7 +6,7 @@ import "./utils/Math.sol";
 import "./utils/TransferHelper.sol";
 
 contract VZPairs is VZERC6909 {
-    uint256 constant MINIMUM_LIQUIDITY = 1000;
+    uint256 constant MINIMUM_LIQUIDITY = 10 ** 3;
 
     address _feeTo;
     address _feeToSetter;
@@ -22,30 +22,25 @@ contract VZPairs is VZERC6909 {
         uint256 price0CumulativeLast;
         uint256 price1CumulativeLast;
         uint256 kLast; // `reserve0` * `reserve1`, as of immediately after the most recent liquidity event.
-        uint256 totalSupply;
+        uint256 supply;
     }
 
-    function totalSupply(uint256 id) public view returns (uint256) {
-        return pools[id].totalSupply;
-    }
-
-    // Soledge guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol)
-    uint256 constant _REENTRANCY_GUARD_SLOT = 0x929eee149b4bd21268;
-
+    /// @dev Reentrancy guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol).
     modifier lock() {
         assembly ("memory-safe") {
-            if tload(_REENTRANCY_GUARD_SLOT) {
+            if tload(0x929eee149b4bd21268) {
                 mstore(0x00, 0xab143c06)
                 revert(0x1c, 0x04)
             }
-            tstore(_REENTRANCY_GUARD_SLOT, address())
+            tstore(0x929eee149b4bd21268, address())
         }
         _;
         assembly ("memory-safe") {
-            tstore(_REENTRANCY_GUARD_SLOT, 0)
+            tstore(0x929eee149b4bd21268, 0)
         }
     }
 
+    /// @dev Reserves for a given liquidity token `id`.
     function getReserves(uint256 id)
         public
         view
@@ -54,6 +49,11 @@ contract VZPairs is VZERC6909 {
         Pool storage pool = pools[id];
         (reserve0, reserve1, blockTimestampLast) =
             (pool.reserve0, pool.reserve1, pool.blockTimestampLast);
+    }
+
+    /// @dev Total supply for a given liquidity token `id`.
+    function totalSupply(uint256 id) public view returns (uint256) {
+        return pools[id].supply;
     }
 
     event Mint(uint256 indexed pool, address indexed sender, uint256 amount0, uint256 amount1);
@@ -77,6 +77,22 @@ contract VZPairs is VZERC6909 {
 
     constructor(address feeToSetter) payable {
         _feeToSetter = feeToSetter;
+    }
+
+    error IdenticalAddresses();
+    error PairExists();
+
+    /// @dev Create a new pair pool in the singleton and mint initial liquidity tokens for `to`.
+    function initialize(address to, address tokenA, address tokenB)
+        public
+        returns (uint256 liquidity)
+    {
+        if (tokenA == tokenB) revert IdenticalAddresses();
+        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        uint256 id = uint256(keccak256(abi.encodePacked(token0, token1)));
+        if (pools[id].supply != 0) revert PairExists();
+        (pools[id].token0, pools[id].token1) = (token0, token1);
+        return mint(to, id);
     }
 
     error Overflow();
@@ -119,36 +135,20 @@ contract VZPairs is VZERC6909 {
                 uint256 rootK = sqrt(uint256(reserve0) * reserve1);
                 uint256 rootKLast = sqrt(pool.kLast);
                 if (rootK > rootKLast) {
-                    uint256 numerator = pool.totalSupply * (rootK - rootKLast);
+                    uint256 numerator = pool.supply * (rootK - rootKLast);
                     uint256 denominator = (rootK * 5) + rootKLast;
                     unchecked {
                         uint256 liquidity = numerator / denominator;
                         if (liquidity != 0) {
                             _mint(feeTo, id, liquidity);
                         }
-                        pool.totalSupply += liquidity;
+                        pool.supply += liquidity;
                     }
                 }
             }
         } else if (pool.kLast != 0) {
             pool.kLast = 0;
         }
-    }
-
-    error IdenticalAddresses();
-    error PairExists();
-
-    /// @dev Create a new pair pool in the singleton and mint initial liquidity tokens for `to`.
-    function initialize(address to, address tokenA, address tokenB)
-        public
-        returns (uint256 liquidity)
-    {
-        if (tokenA == tokenB) revert IdenticalAddresses();
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        uint256 id = uint256(keccak256(abi.encodePacked(token0, token1)));
-        if (pools[id].totalSupply != 0) revert PairExists();
-        (pools[id].token0, pools[id].token1) = (token0, token1);
-        return mint(to, id);
     }
 
     error InsufficientLiquidityMinted();
@@ -165,19 +165,19 @@ contract VZPairs is VZERC6909 {
         uint256 amount1 = balance1 - pool.reserve1;
 
         bool feeOn = _mintFee(id, pool.reserve0, pool.reserve1);
-        if (pool.totalSupply == 0) {
+        if (pool.supply == 0) {
             liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             _mint(address(0), id, MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
-            pool.totalSupply += MINIMUM_LIQUIDITY;
+            pool.supply += MINIMUM_LIQUIDITY;
         } else {
             liquidity = min(
-                mulDiv(amount0, pool.totalSupply, pool.reserve0),
-                mulDiv(amount1, pool.totalSupply, pool.reserve1)
+                mulDiv(amount0, pool.supply, pool.reserve0),
+                mulDiv(amount1, pool.supply, pool.reserve1)
             );
         }
         if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, id, liquidity);
-        pool.totalSupply += liquidity;
+        pool.supply += liquidity;
 
         _update(id, balance0, balance1, pool.reserve0, pool.reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
@@ -197,11 +197,11 @@ contract VZPairs is VZERC6909 {
         uint256 liquidity = balanceOf(address(this), id);
 
         bool feeOn = _mintFee(id, pool.reserve0, pool.reserve1);
-        amount0 = mulDiv(liquidity, balance0, pool.totalSupply); // Using balances ensures pro-rata distribution.
-        amount1 = mulDiv(liquidity, balance1, pool.totalSupply); // Using balances ensures pro-rata distribution.
+        amount0 = mulDiv(liquidity, balance0, pool.supply); // Using balances ensures pro-rata distribution.
+        amount1 = mulDiv(liquidity, balance1, pool.supply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0 || amount1 == 0) revert InsufficientLiquidityBurned();
         _burn(address(this), id, liquidity);
-        pool.totalSupply -= liquidity;
+        pool.supply -= liquidity;
         ethPair ? safeTransferETH(to, amount0) : safeTransfer(pool.token0, to, amount0);
         safeTransfer(pool.token1, to, amount1);
         balance0 = ethPair ? address(this).balance : getBalanceOf(pool.token0, address(this));
