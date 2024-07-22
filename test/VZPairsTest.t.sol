@@ -25,8 +25,8 @@ contract VZPairsTest is Test {
         token1 = MockERC20(_token1);
 
         pairs = new VZPairs(address(1));
-        pair = uint256(keccak256(abi.encodePacked(address(token0), address(token1), uint16(30))));
-        ethPair = uint256(keccak256(abi.encodePacked(address(0), address(token1), uint16(30))));
+        pair = uint256(keccak256(abi.encode(address(token0), address(token1), uint16(30))));
+        ethPair = uint256(keccak256(abi.encode(address(0), address(token1), uint16(30))));
 
         testUser = new TestUser(pair);
 

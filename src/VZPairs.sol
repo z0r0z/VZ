@@ -144,7 +144,15 @@ contract VZPairs is VZERC6909 {
     {
         if (tokenA == tokenB) revert IdenticalAddresses();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        uint256 poolId = uint256(keccak256(abi.encodePacked(token0, token1, fee)));
+
+        uint256 poolId;
+        assembly ("memory-safe") {
+            let m := mload(0x40)
+            mstore(m, token0)
+            mstore(add(m, 0x20), token1)
+            mstore(add(m, 0x40), fee)
+            poolId := keccak256(m, 0x60)
+        }
 
         Pool storage pool = pools[poolId];
         if (pool.supply != 0) revert PairExists();
