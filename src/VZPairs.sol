@@ -20,6 +20,7 @@ contract VZPairs is VZERC6909 {
         uint256 price1CumulativeLast;
         uint256 kLast; // `reserve0` * `reserve1`, as of immediately after the most recent liquidity event.
         uint256 supply;
+        uint16 fee;
     }
 
     /// @dev Reentrancy guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol).
@@ -82,15 +83,15 @@ contract VZPairs is VZERC6909 {
     error PairExists();
 
     /// @dev Create a new pair pool in the singleton and mint initial liquidity tokens for `to`.
-    function initialize(address to, address tokenA, address tokenB)
+    function initialize(address to, address tokenA, address tokenB, uint16 fee)
         public
         returns (uint256 liquidity)
     {
         if (tokenA == tokenB) revert IdenticalAddresses();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        uint256 poolId = uint256(keccak256(abi.encodePacked(token0, token1)));
+        uint256 poolId = uint256(keccak256(abi.encodePacked(token0, token1, fee)));
         if (pools[poolId].supply != 0) revert PairExists();
-        (pools[poolId].token0, pools[poolId].token1) = (token0, token1);
+        (pools[poolId].token0, pools[poolId].token1, pools[poolId].fee) = (token0, token1, fee);
         return mint(to, poolId);
     }
 
@@ -138,7 +139,7 @@ contract VZPairs is VZERC6909 {
                 uint256 rootKLast = sqrt(pool.kLast);
                 if (rootK > rootKLast) {
                     uint256 numerator = pool.supply * (rootK - rootKLast);
-                    uint256 denominator = (rootK * 5) + rootKLast;
+                    uint256 denominator = (rootK * (10000 / (pool.fee / 2))) + rootKLast;
                     unchecked {
                         uint256 liquidity = numerator / denominator;
                         if (liquidity != 0) {
@@ -263,11 +264,11 @@ contract VZPairs is VZERC6909 {
         }
         if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
 
-        uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
-        uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * pool.fee);
+        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * pool.fee);
         if (
             balance0Adjusted * balance1Adjusted
-                < (uint256(pool.reserve0) * pool.reserve1) * 1000 ** 2
+                < (uint256(pool.reserve0) * pool.reserve1) * 10000 ** 2
         ) {
             revert K();
         }

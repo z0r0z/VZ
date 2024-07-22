@@ -25,8 +25,8 @@ contract VZPairsTest is Test {
         token1 = MockERC20(_token1);
 
         pairs = new VZPairs(address(1));
-        pair = uint256(keccak256(abi.encodePacked(address(token0), address(token1))));
-        ethPair = uint256(keccak256(abi.encodePacked(address(0), address(token1))));
+        pair = uint256(keccak256(abi.encodePacked(address(token0), address(token1), uint16(30))));
+        ethPair = uint256(keccak256(abi.encodePacked(address(0), address(token1), uint16(30))));
 
         testUser = new TestUser(pair);
 
@@ -64,7 +64,7 @@ contract VZPairsTest is Test {
     }
 
     function assertCumulativePrices(uint256 expectedPrice0, uint256 expectedPrice1) internal view {
-        (,,,,, uint256 price0CumulativeLast, uint256 price1CumulativeLast,,) = pairs.pools(pair);
+        (,,,,, uint256 price0CumulativeLast, uint256 price1CumulativeLast,,,) = pairs.pools(pair);
         assertEq(price0CumulativeLast, expectedPrice0, "unexpected cumulative price 0");
         assertEq(price1CumulativeLast, expectedPrice1, "unexpected cumulative price 1");
     }
@@ -85,7 +85,7 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
@@ -96,20 +96,20 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
         assertEq(pairs.totalSupply(pair), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
     }
 
     function testMintWhenTheresLiquidity() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1)); // + 1 LP
+        pairs.initialize(address(this), address(token0), address(token1), 30); // + 1 LP
 
         vm.warp(37);
 
@@ -127,7 +127,7 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1)); // + 1 LP
+        pairs.initialize(address(this), address(token0), address(token1), 30); // + 1 LP
 
         assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
@@ -143,7 +143,7 @@ contract VZPairsTest is Test {
     function testMintLiquidityUnderflow() public {
         // 0x11: If an arithmetic operation results in underflow or overflow outside of an unchecked { ... } block.
         vm.expectRevert(encodeError("Panic(uint256)", 0x11));
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
     }
 
     function testMintZeroLiquidity() public {
@@ -151,14 +151,14 @@ contract VZPairsTest is Test {
         token1.transfer(address(pairs), 1000);
 
         vm.expectRevert(encodeError("InsufficientLiquidityMinted()"));
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
     }
 
     function testBurn() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         uint256 liquidity = pairs.balanceOf(address(this), pair);
         pairs.transfer(address(pairs), pair, liquidity);
@@ -175,7 +175,7 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         token0.transfer(address(pairs), 2 ether);
         token1.transfer(address(pairs), 1 ether);
@@ -238,7 +238,7 @@ contract VZPairsTest is Test {
         // Transfer and mint as a normal user.
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         vm.prank(address(0xdeadbeef));
         vm.expectRevert(encodeError("InsufficientLiquidityBurned()"));
@@ -248,7 +248,7 @@ contract VZPairsTest is Test {
     function testSwapBasicScenario() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         uint256 amountOut = 0.181322178776029826 ether;
         token0.transfer(address(pairs), 0.1 ether);
@@ -271,7 +271,7 @@ contract VZPairsTest is Test {
         uint256 startingETHBalance = address(this).balance;
         payable(address(pairs)).transfer(1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(0), address(token1));
+        pairs.initialize(address(this), address(0), address(token1), 30);
 
         uint256 amountOut = 0.181322178776029826 ether;
         payable(address(pairs)).transfer(0.1 ether);
@@ -293,7 +293,7 @@ contract VZPairsTest is Test {
     function testSwapBasicScenarioReverseDirection() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         token1.transfer(address(pairs), 0.2 ether);
         pairs.swap(pair, 0.09 ether, 0, address(this), "");
@@ -314,7 +314,7 @@ contract VZPairsTest is Test {
     function testSwapBidirectional() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         token0.transfer(address(pairs), 0.1 ether);
         token1.transfer(address(pairs), 0.2 ether);
@@ -336,7 +336,7 @@ contract VZPairsTest is Test {
     function testSwapZeroOut() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         vm.expectRevert(encodeError("InsufficientOutputAmount()"));
         pairs.swap(pair, 0, 0, address(this), "");
@@ -345,7 +345,7 @@ contract VZPairsTest is Test {
     function testSwapInsufficientLiquidity() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         vm.expectRevert(encodeError("InsufficientLiquidity()"));
         pairs.swap(pair, 0, 2.1 ether, address(this), "");
@@ -357,7 +357,7 @@ contract VZPairsTest is Test {
     function testSwapUnderpriced() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         token0.transfer(address(pairs), 0.1 ether);
         pairs.swap(pair, 0, 0.09 ether, address(this), "");
@@ -378,7 +378,7 @@ contract VZPairsTest is Test {
     function testSwapOverpriced() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         token0.transfer(address(pairs), 0.1 ether);
 
@@ -397,7 +397,7 @@ contract VZPairsTest is Test {
     function testSwapUnpaidFee() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         token0.transfer(address(pairs), 0.1 ether);
 
@@ -409,7 +409,7 @@ contract VZPairsTest is Test {
         vm.warp(0);
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         (uint256 initialPrice0, uint256 initialPrice1) = calculateCurrentPrice();
 
@@ -467,7 +467,7 @@ contract VZPairsTest is Test {
     function testFlashloan() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 2 ether);
-        pairs.initialize(address(this), address(token0), address(token1));
+        pairs.initialize(address(this), address(token0), address(token1), 30);
 
         uint256 flashloanAmount = 0.1 ether;
         uint256 flashloanFee = (flashloanAmount * 1000) / 997 - flashloanAmount + 1;
@@ -502,7 +502,7 @@ contract TestUser {
         else ERC20(token0Address_).transfer(pairsAddress_, amount0_);
         ERC20(token1Address_).transfer(pairsAddress_, amount1_);
 
-        VZPairs(pairsAddress_).initialize(address(this), token0Address_, token1Address_);
+        VZPairs(pairsAddress_).initialize(address(this), token0Address_, token1Address_, 30);
     }
 
     function removeLiquidity(address payable pairAddress_) public {
