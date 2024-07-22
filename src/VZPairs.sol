@@ -162,7 +162,7 @@ contract VZPairs is VZERC6909 {
             : getBalanceOf(pool.token0, address(this));
         uint256 balance1 = getBalanceOf(pool.token1, address(this));
 
-        bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
+        bool feeOn = _mintFee(poolId, 0, 0);
         liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
         _mint(address(0), poolId, MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
         pool.supply += MINIMUM_LIQUIDITY;
