@@ -5,17 +5,17 @@ pragma solidity ^0.8.19;
 /// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
 /// @dev For a better understanding of optimization choices and full documentation, consult Solady ERC6909.
 abstract contract VZERC6909 {
-    uint256 constant _TRANSFER_EVENT_SIGNATURE =
+    uint256 constant TRANSFER_EVENT_SIGNATURE =
         0x1b3d7edb2e9c0b0e7c525b20aaaef0f5940d2ed71663c7d39266ecafac728859;
-    uint256 constant _OPERATOR_SET_EVENT_SIGNATURE =
+    uint256 constant OPERATOR_SET_EVENT_SIGNATURE =
         0xceb576d9f15e4e200fdb5096d64d5dfd667e16def20c1eefd14256d8e3faa267;
-    uint256 constant _APPROVAL_EVENT_SIGNATURE =
+    uint256 constant APPROVAL_EVENT_SIGNATURE =
         0xb3fd5071835887567a0671151121894ddccc2842f1d10bedad13e0d17cace9a7;
-    uint256 constant _ERC6909_MASTER_SLOT_SEED = 0xedcaa89a82293940;
+    uint256 constant ERC6909_MASTER_SLOT_SEED = 0xedcaa89a82293940;
 
     function balanceOf(address owner, uint256 id) public view returns (uint256 amount) {
         assembly ("memory-safe") {
-            mstore(0x20, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, owner)
             mstore(0x00, id)
             amount := sload(keccak256(0x00, 0x40))
@@ -28,7 +28,7 @@ abstract contract VZERC6909 {
         returns (uint256 amount)
     {
         assembly ("memory-safe") {
-            mstore(0x34, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x34, ERC6909_MASTER_SLOT_SEED)
             mstore(0x28, owner)
             mstore(0x14, spender)
             mstore(0x00, id)
@@ -39,7 +39,7 @@ abstract contract VZERC6909 {
 
     function isOperator(address owner, address spender) public view returns (bool status) {
         assembly ("memory-safe") {
-            mstore(0x20, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, owner)
             mstore(0x00, spender)
             status := sload(keccak256(0x0c, 0x34))
@@ -52,7 +52,7 @@ abstract contract VZERC6909 {
         returns (bool result)
     {
         assembly ("memory-safe") {
-            mstore(0x20, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, caller())
             mstore(0x00, id)
             let fromBalanceSlot := keccak256(0x00, 0x40)
@@ -74,7 +74,7 @@ abstract contract VZERC6909 {
             sstore(toBalanceSlot, toBalanceAfter)
             mstore(0x00, caller())
             mstore(0x20, amount)
-            log4(0x00, 0x40, _TRANSFER_EVENT_SIGNATURE, caller(), shr(96, shl(96, to)), id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, caller(), shr(96, shl(96, to)), id)
             result := 1
         }
     }
@@ -85,7 +85,7 @@ abstract contract VZERC6909 {
         returns (bool result)
     {
         assembly ("memory-safe") {
-            mstore(0x34, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x34, ERC6909_MASTER_SLOT_SEED)
             mstore(0x28, from)
             mstore(0x14, caller())
             if iszero(sload(keccak256(0x20, 0x34))) {
@@ -121,7 +121,7 @@ abstract contract VZERC6909 {
             mstore(0x00, caller())
             mstore(0x20, amount)
             // forgefmt: disable-next-line
-            log4(0x00, 0x40, _TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), shr(96, shl(96, to)), id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), shr(96, shl(96, to)), id)
             mstore(0x34, 0x00)
             result := 1
         }
@@ -133,13 +133,13 @@ abstract contract VZERC6909 {
         returns (bool result)
     {
         assembly ("memory-safe") {
-            mstore(0x34, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x34, ERC6909_MASTER_SLOT_SEED)
             mstore(0x28, caller())
             mstore(0x14, spender)
             mstore(0x00, id)
             sstore(keccak256(0x00, 0x54), amount)
             mstore(0x00, amount)
-            log4(0x00, 0x20, _APPROVAL_EVENT_SIGNATURE, caller(), shr(96, mload(0x20)), id)
+            log4(0x00, 0x20, APPROVAL_EVENT_SIGNATURE, caller(), shr(96, mload(0x20)), id)
             mstore(0x34, 0x00)
             result := 1
         }
@@ -148,12 +148,12 @@ abstract contract VZERC6909 {
     function setOperator(address operator, bool approved) public payable returns (bool result) {
         assembly ("memory-safe") {
             let approvedCleaned := iszero(iszero(approved))
-            mstore(0x20, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, caller())
             mstore(0x00, operator)
             sstore(keccak256(0x0c, 0x34), approvedCleaned)
             mstore(0x20, approvedCleaned)
-            log3(0x20, 0x20, _OPERATOR_SET_EVENT_SIGNATURE, caller(), shr(96, mload(0x0c)))
+            log3(0x20, 0x20, OPERATOR_SET_EVENT_SIGNATURE, caller(), shr(96, mload(0x0c)))
             result := 1
         }
     }
@@ -167,7 +167,7 @@ abstract contract VZERC6909 {
 
     function _mint(address to, uint256 id, uint256 amount) internal {
         assembly ("memory-safe") {
-            mstore(0x20, _ERC6909_MASTER_SLOT_SEED)
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, to)
             mstore(0x00, id)
             let toBalanceSlot := keccak256(0x00, 0x40)
@@ -180,14 +180,14 @@ abstract contract VZERC6909 {
             sstore(toBalanceSlot, toBalanceAfter)
             mstore(0x00, caller())
             mstore(0x20, amount)
-            log4(0x00, 0x40, _TRANSFER_EVENT_SIGNATURE, 0, shr(96, shl(96, to)), id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, 0, shr(96, shl(96, to)), id)
         }
     }
 
-    function _burn(address from, uint256 id, uint256 amount) internal {
+    function _burn(uint256 id, uint256 amount) internal {
         assembly ("memory-safe") {
-            mstore(0x20, _ERC6909_MASTER_SLOT_SEED)
-            mstore(0x14, from)
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
+            mstore(0x14, address())
             mstore(0x00, id)
             let fromBalanceSlot := keccak256(0x00, 0x40)
             let fromBalance := sload(fromBalanceSlot)
@@ -198,7 +198,7 @@ abstract contract VZERC6909 {
             sstore(fromBalanceSlot, sub(fromBalance, amount))
             mstore(0x00, caller())
             mstore(0x20, amount)
-            log4(0x00, 0x40, _TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), 0, id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, address())), 0, id)
         }
     }
 }
