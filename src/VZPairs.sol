@@ -161,11 +161,9 @@ contract VZPairs is VZERC6909 {
             ? address(this).balance
             : getBalanceOf(pool.token0, address(this));
         uint256 balance1 = getBalanceOf(pool.token1, address(this));
-        uint256 amount0 = balance0 - pool.reserve0;
-        uint256 amount1 = balance1 - pool.reserve1;
 
         bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
-        liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+        liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
         _mint(address(0), poolId, MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
         pool.supply += MINIMUM_LIQUIDITY;
 
@@ -175,7 +173,7 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
-        emit Mint(poolId, msg.sender, amount0, amount1);
+        emit Mint(poolId, msg.sender, balance0, balance1);
     }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
