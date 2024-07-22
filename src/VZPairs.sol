@@ -138,7 +138,7 @@ contract VZPairs is VZERC6909 {
     error PairExists();
 
     /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
-    function initialize(address to, address token0, address token1, uint16 fee)
+    function initialize(address to, address token0, address token1, uint16 swapFee)
         public
         returns (uint256 liquidity)
     {
@@ -149,29 +149,29 @@ contract VZPairs is VZERC6909 {
             let m := mload(0x40)
             mstore(m, token0)
             mstore(add(m, 0x20), token1)
-            mstore(add(m, 0x40), fee)
+            mstore(add(m, 0x40), swapFee)
             poolId := keccak256(m, 0x60)
         }
 
         Pool storage pool = pools[poolId];
         if (pool.supply != 0) revert PairExists();
-        (pool.token0, pool.token1, pool.swapFee) = (token0, token1, fee);
+        (pool.token0, pool.token1, pool.swapFee) = (token0, token1, swapFee);
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
             : getBalanceOf(pool.token0, address(this));
         uint256 balance1 = getBalanceOf(pool.token1, address(this));
-
-        bool feeOn = _mintFee(poolId, 0, 0);
         liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
-        _mint(address(0), poolId, MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
-        pool.supply += MINIMUM_LIQUIDITY;
-
-        if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, poolId, liquidity);
-        pool.supply += liquidity;
+        unchecked {
+            pool.supply = liquidity + MINIMUM_LIQUIDITY;
+        }
 
-        _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+        _update(poolId, balance0, balance1, 0, 0);
+        bool feeOn;
+        assembly ("memory-safe") {
+            feeOn := iszero(iszero(sload(0x20)))
+        }
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         emit Mint(poolId, msg.sender, balance0, balance1);
     }

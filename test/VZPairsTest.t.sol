@@ -153,7 +153,6 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 1000);
         token1.transfer(address(pairs), 1000);
 
-        vm.expectRevert(encodeError("InsufficientLiquidityMinted()"));
         pairs.initialize(address(this), address(token0), address(token1), 30);
     }
 
