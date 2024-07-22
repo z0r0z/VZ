@@ -134,16 +134,15 @@ contract VZPairs is VZERC6909 {
     }
 
     error InsufficientLiquidityMinted();
-    error IdenticalAddresses();
+    error InvalidPoolTokens();
     error PairExists();
 
     /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
-    function initialize(address to, address tokenA, address tokenB, uint16 fee)
+    function initialize(address to, address token0, address token1, uint16 fee)
         public
         returns (uint256 liquidity)
     {
-        if (tokenA == tokenB) revert IdenticalAddresses();
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        if (token0 >= token1) revert InvalidPoolTokens();
 
         uint256 poolId;
         assembly ("memory-safe") {
