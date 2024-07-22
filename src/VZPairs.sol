@@ -74,22 +74,6 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    error IdenticalAddresses();
-    error PairExists();
-
-    /// @dev Create a new pair pool in the singleton and mint initial liquidity tokens for `to`.
-    function initialize(address to, address tokenA, address tokenB, uint16 fee)
-        public
-        returns (uint256 liquidity)
-    {
-        if (tokenA == tokenB) revert IdenticalAddresses();
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        uint256 poolId = uint256(keccak256(abi.encodePacked(token0, token1, fee)));
-        if (pools[poolId].supply != 0) revert PairExists();
-        (pools[poolId].token0, pools[poolId].token1, pools[poolId].fee) = (token0, token1, fee);
-        return mint(to, poolId);
-    }
-
     error Overflow();
 
     /// @dev Update reserves and, on the first call per block, price accumulators for the given pool `poolId`.
@@ -150,6 +134,42 @@ contract VZPairs is VZERC6909 {
     }
 
     error InsufficientLiquidityMinted();
+    error IdenticalAddresses();
+    error PairExists();
+
+    /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
+    function initialize(address to, address tokenA, address tokenB, uint16 fee)
+        public
+        returns (uint256 liquidity)
+    {
+        if (tokenA == tokenB) revert IdenticalAddresses();
+        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        uint256 poolId = uint256(keccak256(abi.encodePacked(token0, token1, fee)));
+
+        Pool storage pool = pools[poolId];
+        if (pool.supply != 0) revert PairExists();
+        (pool.token0, pool.token1, pool.fee) = (token0, token1, fee);
+
+        uint256 balance0 = pool.token0 == address(0)
+            ? address(this).balance
+            : getBalanceOf(pool.token0, address(this));
+        uint256 balance1 = getBalanceOf(pool.token1, address(this));
+        uint256 amount0 = balance0 - pool.reserve0;
+        uint256 amount1 = balance1 - pool.reserve1;
+
+        bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
+        liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+        _mint(address(0), poolId, MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
+        pool.supply += MINIMUM_LIQUIDITY;
+
+        if (liquidity == 0) revert InsufficientLiquidityMinted();
+        _mint(to, poolId, liquidity);
+        pool.supply += liquidity;
+
+        _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
+        emit Mint(poolId, msg.sender, amount0, amount1);
+    }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
@@ -163,16 +183,9 @@ contract VZPairs is VZERC6909 {
         uint256 amount1 = balance1 - pool.reserve1;
 
         bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
-        if (pool.supply == 0) {
-            liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
-            _mint(address(0), poolId, MINIMUM_LIQUIDITY); // Permanently lock the first `MINIMUM_LIQUIDITY` tokens.
-            pool.supply += MINIMUM_LIQUIDITY;
-        } else {
-            liquidity = min(
-                mulDiv(amount0, pool.supply, pool.reserve0),
-                mulDiv(amount1, pool.supply, pool.reserve1)
-            );
-        }
+        liquidity = min(
+            mulDiv(amount0, pool.supply, pool.reserve0), mulDiv(amount1, pool.supply, pool.reserve1)
+        );
         if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, poolId, liquidity);
         pool.supply += liquidity;
