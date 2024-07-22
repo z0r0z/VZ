@@ -168,11 +168,6 @@ contract VZPairs is VZERC6909 {
         }
 
         _update(poolId, balance0, balance1, 0, 0);
-        bool feeOn;
-        assembly ("memory-safe") {
-            feeOn := iszero(iszero(sload(0x20)))
-        }
-        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         emit Mint(poolId, msg.sender, balance0, balance1);
     }
 
