@@ -64,7 +64,7 @@ contract VZPairsTest is Test {
     }
 
     function assertCumulativePrices(uint256 expectedPrice0, uint256 expectedPrice1) internal view {
-        (,,,,, uint256 price0CumulativeLast, uint256 price1CumulativeLast,,,) = pairs.pools(pair);
+        (,,,,,, uint256 price0CumulativeLast, uint256 price1CumulativeLast,,) = pairs.pools(pair);
         assertEq(price0CumulativeLast, expectedPrice0, "unexpected cumulative price 0");
         assertEq(price1CumulativeLast, expectedPrice1, "unexpected cumulative price 1");
     }
@@ -89,7 +89,7 @@ contract VZPairsTest is Test {
 
         assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
-        (,,,,,,,, uint256 supply,) = pairs.pools(pair);
+        (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 1 ether);
     }
 
@@ -101,7 +101,7 @@ contract VZPairsTest is Test {
 
         assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
-        (,,,,,,,, uint256 supply,) = pairs.pools(pair);
+        (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 1 ether);
 
         pairs.initialize(address(this), address(token0), address(token1), 30);
@@ -121,7 +121,7 @@ contract VZPairsTest is Test {
         pairs.mint(address(this), pair); // + 2 LP
 
         assertEq(pairs.balanceOf(address(this), pair), 3 ether - 1000);
-        (,,,,,,,, uint256 supply,) = pairs.pools(pair);
+        (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 3 ether);
         assertReserves(3 ether, 3 ether);
     }
@@ -169,7 +169,7 @@ contract VZPairsTest is Test {
 
         assertEq(pairs.balanceOf(address(this), pair), 0);
         assertReserves(1000, 1000);
-        (,,,,,,,, uint256 supply,) = pairs.pools(pair);
+        (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1000);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
@@ -192,7 +192,7 @@ contract VZPairsTest is Test {
 
         assertEq(pairs.balanceOf(address(this), pair), 0);
         assertReserves(1500, 1000);
-        (,,,,,,,, uint256 supply,) = pairs.pools(pair);
+        (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1500);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
@@ -205,7 +205,7 @@ contract VZPairsTest is Test {
 
         assertEq(pairs.balanceOf(address(this), pair), 0);
         assertEq(pairs.balanceOf(address(testUser), pair), 1 ether - 1000);
-        (,,,,,,,, uint256 supply,) = pairs.pools(pair);
+        (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 1 ether);
 
         token0.transfer(address(pairs), 2 ether);
@@ -220,7 +220,7 @@ contract VZPairsTest is Test {
         // this user is penalized for providing unbalanced liquidity
         assertEq(pairs.balanceOf(address(this), pair), 0);
         assertReserves(1.5 ether, 1 ether);
-        (,,,,,,,, supply,) = pairs.pools(pair);
+        (,,,,,,,,, supply) = pairs.pools(pair);
         assertEq(supply, 1 ether);
         assertEq(token0.balanceOf(address(this)), 10 ether - 0.5 ether);
         assertEq(token1.balanceOf(address(this)), 10 ether);
@@ -230,7 +230,7 @@ contract VZPairsTest is Test {
         // testUser receives the amount collected from this user
         assertEq(pairs.balanceOf(address(testUser), pair), 0);
         assertReserves(1500, 1000);
-        (,,,,,,,, supply,) = pairs.pools(pair);
+        (,,,,,,,,, supply) = pairs.pools(pair);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(testUser)), 10 ether + 0.5 ether - 1500);
         assertEq(token1.balanceOf(address(testUser)), 10 ether - 1000);

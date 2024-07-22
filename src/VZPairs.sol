@@ -13,6 +13,7 @@ contract VZPairs is VZERC6909 {
     struct Pool {
         address token0;
         address token1;
+        uint16 swapFee;
         uint112 reserve0;
         uint112 reserve1;
         uint32 blockTimestampLast;
@@ -20,7 +21,6 @@ contract VZPairs is VZERC6909 {
         uint256 price1CumulativeLast;
         uint256 kLast; // `reserve0` * `reserve1`, as of immediately after the most recent liquidity event.
         uint256 supply;
-        uint16 fee;
     }
 
     /// @dev Reentrancy guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol).
@@ -118,7 +118,7 @@ contract VZPairs is VZERC6909 {
                 uint256 rootKLast = sqrt(pool.kLast);
                 if (rootK > rootKLast) {
                     uint256 numerator = pool.supply * (rootK - rootKLast);
-                    uint256 denominator = (rootK * (10000 / (pool.fee / 2))) + rootKLast;
+                    uint256 denominator = (rootK * (10000 / (pool.swapFee / 2))) + rootKLast;
                     unchecked {
                         uint256 liquidity = numerator / denominator;
                         if (liquidity != 0) {
@@ -156,7 +156,7 @@ contract VZPairs is VZERC6909 {
 
         Pool storage pool = pools[poolId];
         if (pool.supply != 0) revert PairExists();
-        (pool.token0, pool.token1, pool.fee) = (token0, token1, fee);
+        (pool.token0, pool.token1, pool.swapFee) = (token0, token1, fee);
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
@@ -280,8 +280,8 @@ contract VZPairs is VZERC6909 {
         }
         if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
 
-        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * pool.fee);
-        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * pool.fee);
+        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * pool.swapFee);
+        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * pool.swapFee);
         if (
             balance0Adjusted * balance1Adjusted
                 < (uint256(pool.reserve0) * pool.reserve1) * 10000 ** 2
