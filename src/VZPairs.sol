@@ -240,9 +240,8 @@ contract VZPairs is VZERC6909 {
             (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
 
         if (amount0Out == 0) if (amount1Out == 0) revert InsufficientOutputAmount();
-        if (amount0Out >= reserve0 || amount1Out >= reserve1) {
-            revert InsufficientLiquidity();
-        }
+        if (amount0Out >= reserve0) revert InsufficientLiquidity();
+        if (amount1Out >= reserve1) revert InsufficientLiquidity();
 
         bool ethPair = token0 == address(0);
         if (to == token0 || to == token1) revert InvalidTo();
