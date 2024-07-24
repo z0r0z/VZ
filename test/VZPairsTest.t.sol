@@ -10,14 +10,17 @@ import {VZPairs} from "../src/VZPairs.sol";
 contract VZPairsTest is Test {
     MockERC20 token0;
     MockERC20 token1;
+    MockERC20 ofToken;
     VZPairs pairs;
     uint256 pair;
     uint256 ethPair;
+    uint256 ofPair;
     TestUser testUser;
 
     function setUp() public {
         address tokenA = address(new MockERC20("Token A", "TKNA", 18));
         address tokenB = address(new MockERC20("Token B", "TKNB", 18));
+        ofToken = new MockERC20("Overflow Token", "OVFL", 18);
 
         (address _token0, address _token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
@@ -27,6 +30,7 @@ contract VZPairsTest is Test {
         pairs = new VZPairs(address(1));
         pair = uint256(keccak256(abi.encode(address(token0), address(token1), uint16(30))));
         ethPair = uint256(keccak256(abi.encode(address(0), address(token1), uint16(30))));
+        ofPair = uint256(keccak256(abi.encode(address(0), address(ofToken), uint16(30))));
 
         testUser = new TestUser(pair);
 
@@ -35,6 +39,9 @@ contract VZPairsTest is Test {
 
         token0.mint(address(testUser), 10 ether);
         token1.mint(address(testUser), 10 ether);
+
+        ofToken.mint(address(this), type(uint120).max);
+        ofToken.mint(address(testUser), type(uint120).max);
 
         payable(address(testUser)).transfer(3.33 ether);
     }
@@ -105,6 +112,15 @@ contract VZPairsTest is Test {
         assertEq(supply, 1 ether);
 
         pairs.initialize(address(this), address(token0), address(token1), 30);
+    }
+
+    error Overflow();
+
+    function testMintBootstrapOverflow() public {
+        payable(address(pairs)).transfer(1 ether);
+        ofToken.transfer(address(pairs), type(uint120).max);
+        vm.expectRevert(Overflow.selector);
+        pairs.initialize(address(this), address(0), address(ofToken), 30);
     }
 
     function testMintWhenTheresLiquidity() public {

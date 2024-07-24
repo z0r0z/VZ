@@ -102,6 +102,13 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    /*function _revertOverflow() internal pure {
+        assembly ("memory-safe") {
+            mstore(0x00, 0x35278d12)
+            revert(0x1c, 0x04)
+        }
+    }*/
+
     /// @dev If fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k).
     function _mintFee(uint256 poolId, uint112 reserve0, uint112 reserve1)
         internal
@@ -122,7 +129,7 @@ contract VZPairs is VZERC6909 {
                     uint256 denominator = (rootK * (10000 / (pool.swapFee / 2))) + rootKLast;
                     unchecked {
                         uint256 liquidity = numerator / denominator;
-                        if (liquidity != 0) {
+                        if (liquidity > 0) {
                             _mint(feeTo, poolId, liquidity);
                         }
                         pool.supply += liquidity;
@@ -130,7 +137,7 @@ contract VZPairs is VZERC6909 {
                 }
             }
         } else if (pool.kLast != 0) {
-            pool.kLast = 0;
+            delete pool.kLast;
         }
     }
 
@@ -143,7 +150,7 @@ contract VZPairs is VZERC6909 {
         public
         returns (uint256 liquidity)
     {
-        if (token0 >= token1) revert InvalidPoolTokens();
+        if (token0 >= token1) revert InvalidPoolTokens(); // Ensure ascending order.
 
         uint256 poolId;
         assembly ("memory-safe") {
