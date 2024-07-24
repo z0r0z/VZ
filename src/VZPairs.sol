@@ -166,23 +166,23 @@ contract VZPairs is VZERC6909 {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
         Pool storage pool = pools[poolId];
+        (uint112 _reserve0, uint112 _reserve1) = (pool.reserve0, pool.reserve1);
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
             : getBalanceOf(pool.token0, address(this));
         uint256 balance1 = getBalanceOf(pool.token1, address(this));
-        uint256 amount0 = balance0 - pool.reserve0;
-        uint256 amount1 = balance1 - pool.reserve1;
+        uint256 amount0 = balance0 - _reserve0;
+        uint256 amount1 = balance1 - _reserve1;
 
-        bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
-        liquidity = min(
-            mulDiv(amount0, pool.supply, pool.reserve0), mulDiv(amount1, pool.supply, pool.reserve1)
-        );
+        bool feeOn = _mintFee(poolId, _reserve0, _reserve1);
+        liquidity =
+            min(mulDiv(amount0, pool.supply, _reserve0), mulDiv(amount1, pool.supply, _reserve1));
         if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, poolId, liquidity);
         pool.supply += liquidity;
 
-        _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+        _update(poolId, balance0, balance1, _reserve0, _reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         emit Mint(poolId, msg.sender, amount0, amount1);
     }
