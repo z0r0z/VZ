@@ -166,23 +166,23 @@ contract VZPairs is VZERC6909 {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
         Pool storage pool = pools[poolId];
-        (uint112 _reserve0, uint112 _reserve1) = (pool.reserve0, pool.reserve1);
+        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
             : getBalanceOf(pool.token0, address(this));
         uint256 balance1 = getBalanceOf(pool.token1, address(this));
-        uint256 amount0 = balance0 - _reserve0;
-        uint256 amount1 = balance1 - _reserve1;
+        uint256 amount0 = balance0 - reserve0;
+        uint256 amount1 = balance1 - reserve1;
 
-        bool feeOn = _mintFee(poolId, _reserve0, _reserve1);
+        bool feeOn = _mintFee(poolId, reserve0, reserve1);
         liquidity =
-            min(mulDiv(amount0, pool.supply, _reserve0), mulDiv(amount1, pool.supply, _reserve1));
+            min(mulDiv(amount0, pool.supply, reserve0), mulDiv(amount1, pool.supply, reserve1));
         if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, poolId, liquidity);
         pool.supply += liquidity;
 
-        _update(poolId, balance0, balance1, _reserve0, _reserve1);
+        _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         emit Mint(poolId, msg.sender, amount0, amount1);
     }
@@ -196,27 +196,27 @@ contract VZPairs is VZERC6909 {
         returns (uint256 amount0, uint256 amount1)
     {
         Pool storage pool = pools[poolId];
-        (uint112 _reserve0, uint112 _reserve1) = (pool.reserve0, pool.reserve1);
+        (address token0, address token1, uint112 reserve0, uint112 reserve1) =
+            (pool.token0, pool.token1, pool.reserve0, pool.reserve1);
 
-        bool ethPair = pool.token0 == address(0);
-        uint256 balance0 =
-            ethPair ? address(this).balance : getBalanceOf(pool.token0, address(this));
-        uint256 balance1 = getBalanceOf(pool.token1, address(this));
+        bool ethPair = token0 == address(0);
+        uint256 balance0 = ethPair ? address(this).balance : getBalanceOf(token0, address(this));
+        uint256 balance1 = getBalanceOf(token1, address(this));
         uint256 liquidity = balanceOf(address(this), poolId);
 
-        bool feeOn = _mintFee(poolId, _reserve0, _reserve1);
+        bool feeOn = _mintFee(poolId, reserve0, reserve1);
         amount0 = mulDiv(liquidity, balance0, pool.supply); // Using balances ensures pro-rata distribution.
         amount1 = mulDiv(liquidity, balance1, pool.supply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0) revert InsufficientLiquidityBurned();
         if (amount1 == 0) revert InsufficientLiquidityBurned();
         _burn(poolId, liquidity);
         pool.supply -= liquidity;
-        ethPair ? safeTransferETH(to, amount0) : safeTransfer(pool.token0, to, amount0);
-        safeTransfer(pool.token1, to, amount1);
-        balance0 = ethPair ? address(this).balance : getBalanceOf(pool.token0, address(this));
-        balance1 = getBalanceOf(pool.token1, address(this));
+        ethPair ? safeTransferETH(to, amount0) : safeTransfer(token0, to, amount0);
+        safeTransfer(token1, to, amount1);
+        balance0 = ethPair ? address(this).balance : getBalanceOf(token0, address(this));
+        balance1 = getBalanceOf(token1, address(this));
 
-        _update(poolId, balance0, balance1, _reserve0, _reserve1);
+        _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
