@@ -204,7 +204,8 @@ contract VZPairs is VZERC6909 {
         bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
         amount0 = mulDiv(liquidity, balance0, pool.supply); // Using balances ensures pro-rata distribution.
         amount1 = mulDiv(liquidity, balance1, pool.supply); // Using balances ensures pro-rata distribution.
-        if (amount0 == 0 || amount1 == 0) revert InsufficientLiquidityBurned();
+        if (amount0 == 0) revert InsufficientLiquidityBurned();
+        if (amount1 == 0) revert InsufficientLiquidityBurned();
         _burn(poolId, liquidity);
         pool.supply -= liquidity;
         ethPair ? safeTransferETH(to, amount0) : safeTransfer(pool.token0, to, amount0);
