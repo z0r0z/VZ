@@ -236,46 +236,42 @@ contract VZPairs is VZERC6909 {
         bytes calldata data
     ) public lock {
         Pool storage pool = pools[poolId];
+        (address token0, address token1, uint16 swapFee, uint112 reserve0, uint112 reserve1) =
+            (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
 
         if (amount0Out == 0 && amount1Out == 0) revert InsufficientOutputAmount();
-        if (amount0Out >= pool.reserve0 || amount1Out >= pool.reserve1) {
+        if (amount0Out >= reserve0 || amount1Out >= reserve1) {
             revert InsufficientLiquidity();
         }
 
-        bool ethPair = pool.token0 == address(0);
-        if (to == pool.token0 || to == pool.token1) revert InvalidTo();
+        bool ethPair = token0 == address(0);
+        if (to == token0 || to == token1) revert InvalidTo();
         // Optimistically transfer tokens.
         if (amount0Out != 0) {
-            ethPair ? safeTransferETH(to, amount0Out) : safeTransfer(pool.token0, to, amount0Out);
+            ethPair ? safeTransferETH(to, amount0Out) : safeTransfer(token0, to, amount0Out);
         }
-        if (amount1Out != 0) safeTransfer(pool.token1, to, amount1Out);
+        if (amount1Out != 0) safeTransfer(token1, to, amount1Out);
         if (data.length != 0) {
             IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
         }
-        uint256 balance0 =
-            ethPair ? address(this).balance : getBalanceOf(pool.token0, address(this));
-        uint256 balance1 = getBalanceOf(pool.token1, address(this));
+        uint256 balance0 = ethPair ? address(this).balance : getBalanceOf(token0, address(this));
+        uint256 balance1 = getBalanceOf(token1, address(this));
 
         uint256 amount0In;
         uint256 amount1In;
         unchecked {
-            amount0In =
-                balance0 > pool.reserve0 - amount0Out ? balance0 - (pool.reserve0 - amount0Out) : 0;
-            amount1In =
-                balance1 > pool.reserve1 - amount1Out ? balance1 - (pool.reserve1 - amount1Out) : 0;
+            amount0In = balance0 > reserve0 - amount0Out ? balance0 - (reserve0 - amount0Out) : 0;
+            amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
         if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
 
-        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * pool.swapFee);
-        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * pool.swapFee);
-        if (
-            balance0Adjusted * balance1Adjusted
-                < (uint256(pool.reserve0) * pool.reserve1) * 10000 ** 2
-        ) {
+        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * swapFee);
+        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * swapFee);
+        if (balance0Adjusted * balance1Adjusted < (uint256(reserve0) * reserve1) * 10000 ** 2) {
             revert K();
         }
 
-        _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+        _update(poolId, balance0, balance1, reserve0, reserve1);
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
