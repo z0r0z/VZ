@@ -166,7 +166,8 @@ contract VZPairs is VZERC6909 {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
         Pool storage pool = pools[poolId];
-        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+        (uint112 reserve0, uint112 reserve1, uint256 supply) =
+            (pool.reserve0, pool.reserve1, pool.supply);
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
@@ -176,8 +177,7 @@ contract VZPairs is VZERC6909 {
         uint256 amount1 = balance1 - reserve1;
 
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
-        liquidity =
-            min(mulDiv(amount0, pool.supply, reserve0), mulDiv(amount1, pool.supply, reserve1));
+        liquidity = min(mulDiv(amount0, supply, reserve0), mulDiv(amount1, supply, reserve1));
         if (liquidity == 0) revert InsufficientLiquidityMinted();
         _mint(to, poolId, liquidity);
         pool.supply += liquidity;
