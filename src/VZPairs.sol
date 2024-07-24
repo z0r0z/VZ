@@ -86,7 +86,8 @@ contract VZPairs is VZERC6909 {
     ) internal {
         unchecked {
             Pool storage pool = pools[poolId];
-            if (balance0 > type(uint112).max || balance1 > type(uint112).max) revert Overflow();
+            if (balance0 > type(uint112).max) revert Overflow();
+            if (balance1 > type(uint112).max) revert Overflow();
             uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
             uint32 timeElapsed = blockTimestamp - pool.blockTimestampLast; // Overflow is desired.
             if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
