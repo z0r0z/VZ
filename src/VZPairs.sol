@@ -196,6 +196,7 @@ contract VZPairs is VZERC6909 {
         returns (uint256 amount0, uint256 amount1)
     {
         Pool storage pool = pools[poolId];
+        (uint112 _reserve0, uint112 _reserve1) = (pool.reserve0, pool.reserve1);
 
         bool ethPair = pool.token0 == address(0);
         uint256 balance0 =
@@ -203,7 +204,7 @@ contract VZPairs is VZERC6909 {
         uint256 balance1 = getBalanceOf(pool.token1, address(this));
         uint256 liquidity = balanceOf(address(this), poolId);
 
-        bool feeOn = _mintFee(poolId, pool.reserve0, pool.reserve1);
+        bool feeOn = _mintFee(poolId, _reserve0, _reserve1);
         amount0 = mulDiv(liquidity, balance0, pool.supply); // Using balances ensures pro-rata distribution.
         amount1 = mulDiv(liquidity, balance1, pool.supply); // Using balances ensures pro-rata distribution.
         if (amount0 == 0) revert InsufficientLiquidityBurned();
@@ -215,7 +216,7 @@ contract VZPairs is VZERC6909 {
         balance0 = ethPair ? address(this).balance : getBalanceOf(pool.token0, address(this));
         balance1 = getBalanceOf(pool.token1, address(this));
 
-        _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+        _update(poolId, balance0, balance1, _reserve0, _reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
