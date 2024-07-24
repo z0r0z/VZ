@@ -263,7 +263,7 @@ contract VZPairs is VZERC6909 {
             amount0In = balance0 > reserve0 - amount0Out ? balance0 - (reserve0 - amount0Out) : 0;
             amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
-        if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
+        if (amount0In == 0) if (amount1In == 0) revert InsufficientInputAmount();
 
         uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * swapFee);
         uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * swapFee);
