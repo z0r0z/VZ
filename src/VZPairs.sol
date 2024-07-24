@@ -239,7 +239,7 @@ contract VZPairs is VZERC6909 {
         (address token0, address token1, uint16 swapFee, uint112 reserve0, uint112 reserve1) =
             (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
 
-        if (amount0Out == 0 && amount1Out == 0) revert InsufficientOutputAmount();
+        if (amount0Out == 0) if (amount1Out == 0) revert InsufficientOutputAmount();
         if (amount0Out >= reserve0 || amount1Out >= reserve1) {
             revert InsufficientLiquidity();
         }
