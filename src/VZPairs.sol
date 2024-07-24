@@ -63,6 +63,44 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    error InvalidPoolTokens();
+    error PoolExists();
+
+    /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
+    function initialize(address to, address token0, address token1, uint16 swapFee)
+        public
+        returns (uint256 liquidity)
+    {
+        if (token0 >= token1) revert InvalidPoolTokens(); // Ensure ascending order.
+
+        uint256 poolId;
+        assembly ("memory-safe") {
+            let m := mload(0x40)
+            mstore(m, token0)
+            mstore(add(m, 0x20), token1)
+            mstore(add(m, 0x40), swapFee)
+            poolId := keccak256(m, 0x60)
+        }
+
+        Pool storage pool = pools[poolId];
+        if (pool.supply != 0) revert PoolExists();
+        (pool.token0, pool.token1, pool.swapFee) = (token0, token1, swapFee);
+
+        uint256 balance0 = pool.token0 == address(0)
+            ? address(this).balance
+            : getBalanceOf(pool.token0, address(this));
+        uint256 balance1 = getBalanceOf(pool.token1, address(this));
+        liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
+
+        _mint(to, poolId, liquidity);
+        unchecked {
+            pool.supply = liquidity + MINIMUM_LIQUIDITY;
+        }
+
+        _update(poolId, balance0, balance1, 0, 0);
+        emit Mint(poolId, msg.sender, balance0, balance1);
+    }
+
     error Overflow();
 
     /// @dev Update reserves and, on the first call per block, price accumulators for the given pool `poolId`.
@@ -113,8 +151,8 @@ contract VZPairs is VZERC6909 {
                         uint256 liquidity = numerator / denominator;
                         if (liquidity > 0) {
                             _mint(feeTo, poolId, liquidity);
+                            pool.supply += liquidity;
                         }
-                        pool.supply += liquidity;
                     }
                 }
             }
@@ -124,42 +162,6 @@ contract VZPairs is VZERC6909 {
     }
 
     error InsufficientLiquidityMinted();
-    error InvalidPoolTokens();
-    error PoolExists();
-
-    /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
-    function initialize(address to, address token0, address token1, uint16 swapFee)
-        public
-        returns (uint256 liquidity)
-    {
-        if (token0 >= token1) revert InvalidPoolTokens(); // Ensure ascending order.
-
-        uint256 poolId;
-        assembly ("memory-safe") {
-            let m := mload(0x40)
-            mstore(m, token0)
-            mstore(add(m, 0x20), token1)
-            mstore(add(m, 0x40), swapFee)
-            poolId := keccak256(m, 0x60)
-        }
-
-        Pool storage pool = pools[poolId];
-        if (pool.supply != 0) revert PoolExists();
-        (pool.token0, pool.token1, pool.swapFee) = (token0, token1, swapFee);
-
-        uint256 balance0 = pool.token0 == address(0)
-            ? address(this).balance
-            : getBalanceOf(pool.token0, address(this));
-        uint256 balance1 = getBalanceOf(pool.token1, address(this));
-        liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
-        _mint(to, poolId, liquidity);
-        unchecked {
-            pool.supply = liquidity + MINIMUM_LIQUIDITY;
-        }
-
-        _update(poolId, balance0, balance1, 0, 0);
-        emit Mint(poolId, msg.sender, balance0, balance1);
-    }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
