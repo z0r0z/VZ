@@ -38,17 +38,6 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    /// @dev Reserves for a given liquidity token `poolId`.
-    function getReserves(uint256 poolId)
-        public
-        view
-        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
-    {
-        Pool storage pool = pools[poolId];
-        (reserve0, reserve1, blockTimestampLast) =
-            (pool.reserve0, pool.reserve1, pool.blockTimestampLast);
-    }
-
     event Mint(uint256 indexed poolId, address indexed sender, uint256 amount0, uint256 amount1);
     event Burn(
         uint256 indexed poolId,
@@ -102,13 +91,6 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    /*function _revertOverflow() internal pure {
-        assembly ("memory-safe") {
-            mstore(0x00, 0x35278d12)
-            revert(0x1c, 0x04)
-        }
-    }*/
-
     /// @dev If fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k).
     function _mintFee(uint256 poolId, uint112 reserve0, uint112 reserve1)
         internal
@@ -143,7 +125,7 @@ contract VZPairs is VZERC6909 {
 
     error InsufficientLiquidityMinted();
     error InvalidPoolTokens();
-    error PairExists();
+    error PoolExists();
 
     /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
     function initialize(address to, address token0, address token1, uint16 swapFee)
@@ -162,7 +144,7 @@ contract VZPairs is VZERC6909 {
         }
 
         Pool storage pool = pools[poolId];
-        if (pool.supply != 0) revert PairExists();
+        if (pool.supply != 0) revert PoolExists();
         (pool.token0, pool.token1, pool.swapFee) = (token0, token1, swapFee);
 
         uint256 balance0 = pool.token0 == address(0)

@@ -59,13 +59,13 @@ contract VZPairsTest is Test {
     }
 
     function assertReserves(uint112 expectedReserve0, uint112 expectedReserve1) internal view {
-        (uint112 reserve0, uint112 reserve1,) = pairs.getReserves(pair);
+        (,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(pair);
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
 
     function assertReservesETH(uint112 expectedReserve0, uint112 expectedReserve1) internal view {
-        (uint112 reserve0, uint112 reserve1,) = pairs.getReserves(ethPair);
+        (,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(ethPair);
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
@@ -77,13 +77,13 @@ contract VZPairsTest is Test {
     }
 
     function calculateCurrentPrice() internal view returns (uint256 price0, uint256 price1) {
-        (uint112 reserve0, uint112 reserve1,) = pairs.getReserves(pair);
+        (,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(pair);
         price0 = reserve0 > 0 ? (reserve1 * uint256(UQ112x112.Q112)) / reserve0 : 0;
         price1 = reserve1 > 0 ? (reserve0 * uint256(UQ112x112.Q112)) / reserve1 : 0;
     }
 
     function assertBlockTimestampLast(uint32 expected) internal view {
-        (,, uint32 blockTimestampLast) = pairs.getReserves(pair);
+        (,,,,, uint32 blockTimestampLast,,,,) = pairs.pools(pair);
 
         assertEq(blockTimestampLast, expected, "unexpected blockTimestampLast");
     }
@@ -100,7 +100,9 @@ contract VZPairsTest is Test {
         assertEq(supply, 1 ether);
     }
 
-    function testFailMintBootstrapAlreadyInit() public {
+    error PoolExists();
+
+    function testMintBootstrapFailAlreadyInit() public {
         token0.transfer(address(pairs), 1 ether);
         token1.transfer(address(pairs), 1 ether);
 
@@ -110,13 +112,13 @@ contract VZPairsTest is Test {
         assertReserves(1 ether, 1 ether);
         (,,,,,,,,, uint256 supply) = pairs.pools(pair);
         assertEq(supply, 1 ether);
-
+        vm.expectRevert(PoolExists.selector);
         pairs.initialize(address(this), address(token0), address(token1), 30);
     }
 
     error Overflow();
 
-    function testMintBootstrapOverflow() public {
+    function testMintBootstrapFailOverflow() public {
         payable(address(pairs)).transfer(1 ether);
         ofToken.transfer(address(pairs), type(uint120).max);
         vm.expectRevert(Overflow.selector);
