@@ -13,7 +13,8 @@ contract VZPairs is VZERC6909 {
     struct Pool {
         address token0;
         address token1;
-        uint16 swapFee;
+        uint24 swapFee;
+        address hooks;
         uint112 reserve0;
         uint112 reserve1;
         uint32 blockTimestampLast;
@@ -67,7 +68,7 @@ contract VZPairs is VZERC6909 {
     error PoolExists();
 
     /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
-    function initialize(address to, address token0, address token1, uint16 swapFee)
+    function initialize(address to, address token0, address token1, uint16 swapFee, address hooks)
         public
         returns (uint256 liquidity)
     {
@@ -85,6 +86,7 @@ contract VZPairs is VZERC6909 {
         Pool storage pool = pools[poolId];
         if (pool.supply != 0) revert PoolExists();
         (pool.token0, pool.token1, pool.swapFee) = (token0, token1, swapFee);
+        if (hooks != address(0)) pool.hooks = hooks;
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
@@ -236,7 +238,7 @@ contract VZPairs is VZERC6909 {
         bytes calldata data
     ) public lock {
         Pool storage pool = pools[poolId];
-        (address token0, address token1, uint16 swapFee, uint112 reserve0, uint112 reserve1) =
+        (address token0, address token1, uint24 swapFee, uint112 reserve0, uint112 reserve1) =
             (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
 
         if (amount0Out == 0) if (amount1Out == 0) revert InsufficientOutputAmount();
@@ -305,8 +307,8 @@ contract VZPairs is VZERC6909 {
     fallback() external payable {
         assembly ("memory-safe") {
             if iszero(eq(caller(), sload(0x00))) { revert(codesize(), codesize()) }
-            sstore(0x00, calldataload(0x00))
-            sstore(0x20, calldataload(0x20))
+            sstore(0x00, calldataload(0x00)) // `feeToSetter`.
+            sstore(0x20, calldataload(0x20)) // `feeTo`.
         }
     }
 }
