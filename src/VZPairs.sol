@@ -244,7 +244,8 @@ contract VZPairs is VZERC6909 {
         if (amount1Out >= reserve1) revert InsufficientLiquidity();
 
         bool ethPair = token0 == address(0);
-        if (to == token0 || to == token1) revert InvalidTo();
+        if (to == token0) revert InvalidTo();
+        if (to == token1) revert InvalidTo();
         // Optimistically transfer tokens.
         if (amount0Out != 0) {
             ethPair ? safeTransferETH(to, amount0Out) : safeTransfer(token0, to, amount0Out);
