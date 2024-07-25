@@ -164,12 +164,18 @@ contract VZPairs is VZERC6909 {
     }
 
     error InsufficientLiquidityMinted();
+    error HookRejection();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
+
+        if (pool.hooks != address(0)) {
+            (bool ok,) = pool.hooks.call(msg.data);
+            if (!ok) revert HookRejection();
+        }
 
         uint256 balance0 = pool.token0 == address(0)
             ? address(this).balance
@@ -200,6 +206,11 @@ contract VZPairs is VZERC6909 {
         Pool storage pool = pools[poolId];
         (address token0, address token1, uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.token0, pool.token1, pool.reserve0, pool.reserve1, pool.supply);
+
+        if (pool.hooks != address(0)) {
+            (bool ok,) = pool.hooks.call(msg.data);
+            if (!ok) revert HookRejection();
+        }
 
         bool ethPair = token0 == address(0);
         uint256 balance0 = ethPair ? address(this).balance : getBalanceOf(token0, address(this));
@@ -240,6 +251,11 @@ contract VZPairs is VZERC6909 {
         Pool storage pool = pools[poolId];
         (address token0, address token1, uint24 swapFee, uint112 reserve0, uint112 reserve1) =
             (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
+
+        if (pool.hooks != address(0)) {
+            (bool ok,) = pool.hooks.call(msg.data);
+            if (!ok) revert HookRejection();
+        }
 
         if (amount0Out == 0) if (amount1Out == 0) revert InsufficientOutputAmount();
         if (amount0Out >= reserve0) revert InsufficientLiquidity();
