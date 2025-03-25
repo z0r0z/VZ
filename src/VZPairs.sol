@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.19;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.29;
 
 import "./VZERC6909.sol";
 import "./utils/Math.sol";
@@ -215,16 +215,14 @@ contract VZPairs is VZERC6909 {
 
     error InsufficientLiquidityBurned();
 
-    /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases
+    /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases.
     function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
         if (token == address(0)) {
             safeTransferETH(to, amount);
+        } else if (id == 0) {
+            safeTransfer(token, to, amount);
         } else {
-            if (id == 0) {
-                safeTransfer(token, to, amount);
-            } else {
-                VZERC6909(token).transfer(to, id, amount);
-            }
+            VZERC6909(token).transfer(to, id, amount);
         }
     }
 
@@ -269,7 +267,7 @@ contract VZPairs is VZERC6909 {
         _safeTransfer(token0, to, pool.id0, amount0);
         _safeTransfer(token1, to, pool.id1, amount1);
 
-        // Re-calculate balances after transfers
+        // Re-calculate balances after transfers.
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {

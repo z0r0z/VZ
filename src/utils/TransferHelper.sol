@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.29;
 
 // Modified from Solady (https://github.com/Vectorized/solady/blob/main/src/utils/SafeTransferLib.sol)
 
@@ -20,14 +20,12 @@ function safeTransfer(address token, address to, uint256 amount) {
         mstore(0x14, to)
         mstore(0x34, amount)
         mstore(0x00, 0xa9059cbb000000000000000000000000)
-        if iszero(
-            and(
-                or(eq(mload(0x00), 1), iszero(returndatasize())),
-                call(gas(), token, 0, 0x10, 0x44, 0x00, 0x20)
-            )
-        ) {
-            mstore(0x00, 0x90b8ec18)
-            revert(0x1c, 0x04)
+        let success := call(gas(), token, 0, 0x10, 0x44, 0x00, 0x20)
+        if iszero(and(eq(mload(0x00), 1), success)) {
+            if iszero(lt(or(iszero(extcodesize(token)), returndatasize()), success)) {
+                mstore(0x00, 0x90b8ec18)
+                revert(0x1c, 0x04)
+            }
         }
         mstore(0x34, 0)
     }
