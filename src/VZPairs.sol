@@ -90,14 +90,14 @@ contract VZPairs is VZERC6909 {
         if (pool.token0 == address(0)) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0, address(this));
+            balance0 = getBalanceOf(pool.token0);
         } else {
             balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
         }
 
         uint256 balance1;
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1, address(this));
+            balance1 = getBalanceOf(pool.token1);
         } else {
             balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
         }
@@ -187,14 +187,14 @@ contract VZPairs is VZERC6909 {
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0, address(this));
+            balance0 = getBalanceOf(pool.token0);
         } else {
             balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
         }
 
         uint256 balance1;
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1, address(this));
+            balance1 = getBalanceOf(pool.token1);
         } else {
             balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
         }
@@ -242,14 +242,14 @@ contract VZPairs is VZERC6909 {
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(token0, address(this));
+            balance0 = getBalanceOf(token0);
         } else {
             balance0 = VZERC6909(token0).balanceOf(address(this), pool.id0);
         }
 
         uint256 balance1;
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(token1, address(this));
+            balance1 = getBalanceOf(token1);
         } else {
             balance1 = VZERC6909(token1).balanceOf(address(this), pool.id1);
         }
@@ -271,13 +271,13 @@ contract VZPairs is VZERC6909 {
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(token0, address(this));
+            balance0 = getBalanceOf(token0);
         } else {
             balance0 = VZERC6909(token0).balanceOf(address(this), pool.id0);
         }
 
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(token1, address(this));
+            balance1 = getBalanceOf(token1);
         } else {
             balance1 = VZERC6909(token1).balanceOf(address(this), pool.id1);
         }
@@ -329,14 +329,14 @@ contract VZPairs is VZERC6909 {
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(token0, address(this));
+            balance0 = getBalanceOf(token0);
         } else {
             balance0 = VZERC6909(token0).balanceOf(address(this), pool.id0);
         }
 
         uint256 balance1;
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(token1, address(this));
+            balance1 = getBalanceOf(token1);
         } else {
             balance1 = VZERC6909(token1).balanceOf(address(this), pool.id1);
         }
@@ -368,14 +368,14 @@ contract VZPairs is VZERC6909 {
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0, address(this));
+            balance0 = getBalanceOf(pool.token0);
         } else {
             balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
         }
 
         uint256 balance1;
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1, address(this));
+            balance1 = getBalanceOf(pool.token1);
         } else {
             balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
         }
@@ -393,14 +393,14 @@ contract VZPairs is VZERC6909 {
         if (ethPair) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0, address(this));
+            balance0 = getBalanceOf(pool.token0);
         } else {
             balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
         }
 
         uint256 balance1;
         if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1, address(this));
+            balance1 = getBalanceOf(pool.token1);
         } else {
             balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
         }

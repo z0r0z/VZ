@@ -33,9 +33,9 @@ function safeTransfer(address token, address to, uint256 amount) {
 
 /// @dev Returns the amount of ERC20 `token` owned by `account`.
 /// Returns zero if the `token` does not exist.
-function getBalanceOf(address token, address account) view returns (uint256 amount) {
+function getBalanceOf(address token) view returns (uint256 amount) {
     assembly ("memory-safe") {
-        mstore(0x14, account)
+        mstore(0x14, address())
         mstore(0x00, 0x70a08231000000000000000000000000)
         amount :=
             mul(
