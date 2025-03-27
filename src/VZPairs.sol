@@ -89,7 +89,7 @@ contract VZPairs is VZERC6909 {
         address token1,
         uint256 id1,
         uint256 swapFee
-    ) public returns (uint256 liquidity) {
+    ) public payable returns (uint256 liquidity) {
         require(token0 < token1, InvalidPoolTokens()); // Ensure ascending order.
         require(swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
 
@@ -198,7 +198,7 @@ contract VZPairs is VZERC6909 {
     error InsufficientLiquidityMinted();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function mint(address to, uint256 poolId) public lock returns (uint256 liquidity) {
+    function mint(address to, uint256 poolId) public payable lock returns (uint256 liquidity) {
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
@@ -240,6 +240,7 @@ contract VZPairs is VZERC6909 {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function burn(address to, uint256 poolId)
         public
+        payable
         lock
         returns (uint256 amount0, uint256 amount1)
     {
@@ -311,7 +312,7 @@ contract VZPairs is VZERC6909 {
         uint256 amount1Out,
         address to,
         bytes calldata data
-    ) public lock {
+    ) public payable lock {
         require(amount0Out != 0 || amount1Out != 0, InsufficientOutputAmount());
         Pool storage pool = pools[poolId];
         (address token0, address token1, uint96 swapFee, uint112 reserve0, uint112 reserve1) =
@@ -363,7 +364,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Force balances to match reserves.
-    function skim(address to, uint256 poolId) public lock {
+    function skim(address to, uint256 poolId) public payable lock {
         Pool storage pool = pools[poolId];
 
         uint256 balance0;
@@ -387,7 +388,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Force reserves to match balances.
-    function sync(uint256 poolId) public lock {
+    function sync(uint256 poolId) public payable lock {
         Pool storage pool = pools[poolId];
 
         uint256 balance0;
