@@ -118,12 +118,20 @@ contract VZPairs is VZERC6909 {
 
         liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
 
+        // Lock minimum liquidity to `address(0)` forever.
+        _mint(address(0), poolId, MINIMUM_LIQUIDITY);
+        // Mint the remaining liquidity to the recipient.
         _mint(to, poolId, liquidity);
+
         unchecked {
             pool.supply = liquidity + MINIMUM_LIQUIDITY;
         }
 
         _update(poolId, balance0, balance1, 0, 0);
+
+        bool feeOn = _mintFee(poolId, uint112(balance0), uint112(balance1));
+        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
+
         emit Mint(poolId, msg.sender, balance0, balance1);
     }
 
