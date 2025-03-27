@@ -6,7 +6,8 @@ import "./utils/Math.sol";
 import "./utils/TransferHelper.sol";
 
 contract VZPairs is VZERC6909 {
-    uint256 constant MINIMUM_LIQUIDITY = 10 ** 3;
+    uint256 constant MINIMUM_LIQUIDITY = 1000;
+    uint256 constant MAX_FEE = 10000; // 100%.
 
     mapping(uint256 poolId => Pool) public pools;
 
@@ -40,6 +41,17 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases.
+    function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
+        if (token == address(0)) {
+            safeTransferETH(to, amount);
+        } else if (id == 0) {
+            safeTransfer(token, to, amount);
+        } else {
+            VZERC6909(token).transfer(to, id, amount);
+        }
+    }
+
     event Mint(uint256 indexed poolId, address indexed sender, uint256 amount0, uint256 amount1);
     event Burn(
         uint256 indexed poolId,
@@ -66,6 +78,7 @@ contract VZPairs is VZERC6909 {
     }
 
     error InvalidPoolTokens();
+    error InvalidSwapFee();
     error PoolExists();
 
     /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
@@ -77,12 +90,13 @@ contract VZPairs is VZERC6909 {
         uint256 id1,
         uint24 swapFee
     ) public returns (uint256 liquidity) {
-        if (token0 >= token1) revert InvalidPoolTokens(); // Ensure ascending order.
+        require(token0 < token1, InvalidPoolTokens()); // Ensure ascending order.
+        require(swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
 
         uint256 poolId = uint256(keccak256(abi.encode(token0, id0, token1, id1, swapFee)));
 
         Pool storage pool = pools[poolId];
-        if (pool.supply != 0) revert PoolExists();
+        require(pool.supply == 0, PoolExists());
         (pool.token0, pool.id0, pool.token1, pool.id1, pool.swapFee) =
             (token0, id0, token1, id1, swapFee);
 
@@ -125,8 +139,8 @@ contract VZPairs is VZERC6909 {
     ) internal {
         unchecked {
             Pool storage pool = pools[poolId];
-            if (balance0 > type(uint112).max) revert Overflow();
-            if (balance1 > type(uint112).max) revert Overflow();
+            require(balance0 <= type(uint112).max, Overflow());
+            require(balance1 <= type(uint112).max, Overflow());
             uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
             uint32 timeElapsed = blockTimestamp - pool.blockTimestampLast; // Overflow is desired.
             if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
@@ -158,7 +172,7 @@ contract VZPairs is VZERC6909 {
                 uint256 rootKLast = sqrt(pool.kLast);
                 if (rootK > rootKLast) {
                     uint256 numerator = pool.supply * (rootK - rootKLast);
-                    uint256 denominator = (rootK * (10000 / (pool.swapFee / 2))) + rootKLast;
+                    uint256 denominator = rootK * 5 + rootKLast;
                     unchecked {
                         uint256 liquidity = numerator / denominator;
                         if (liquidity > 0) {
@@ -204,9 +218,9 @@ contract VZPairs is VZERC6909 {
 
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
         liquidity = min(mulDiv(amount0, supply, reserve0), mulDiv(amount1, supply, reserve1));
-        if (liquidity == 0) revert InsufficientLiquidityMinted();
+        require(liquidity != 0, InsufficientLiquidityMinted());
         _mint(to, poolId, liquidity);
-        pool.supply += liquidity;
+        pool.supply += liquidity; // @todo unchecked?
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
@@ -214,17 +228,6 @@ contract VZPairs is VZERC6909 {
     }
 
     error InsufficientLiquidityBurned();
-
-    /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases.
-    function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
-        if (token == address(0)) {
-            safeTransferETH(to, amount);
-        } else if (id == 0) {
-            safeTransfer(token, to, amount);
-        } else {
-            VZERC6909(token).transfer(to, id, amount);
-        }
-    }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function burn(address to, uint256 poolId)
@@ -259,8 +262,8 @@ contract VZPairs is VZERC6909 {
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
         amount0 = mulDiv(liquidity, balance0, supply); // Using balances ensures pro-rata distribution.
         amount1 = mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
-        if (amount0 == 0) revert InsufficientLiquidityBurned();
-        if (amount1 == 0) revert InsufficientLiquidityBurned();
+        require(amount0 != 0, InsufficientLiquidityBurned());
+        require(amount1 != 0, InsufficientLiquidityBurned());
         _burn(poolId, liquidity);
         pool.supply -= liquidity;
 
@@ -301,29 +304,22 @@ contract VZPairs is VZERC6909 {
         address to,
         bytes calldata data
     ) public lock {
+        require(amount0Out != 0 || amount1Out != 0, InsufficientOutputAmount());
         Pool storage pool = pools[poolId];
         (address token0, address token1, uint24 swapFee, uint112 reserve0, uint112 reserve1) =
             (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
 
-        if (amount0Out == 0) if (amount1Out == 0) revert InsufficientOutputAmount();
-        if (amount0Out >= reserve0) revert InsufficientLiquidity();
-        if (amount1Out >= reserve1) revert InsufficientLiquidity();
+        require(amount0Out < reserve0, InsufficientLiquidity());
+        require(amount1Out < reserve1, InsufficientLiquidity());
 
         bool ethPair = token0 == address(0);
-        if (to == token0) revert InvalidTo();
-        if (to == token1) revert InvalidTo();
+        require(to != token0, InvalidTo());
+        require(to != token1, InvalidTo());
 
         // Optimistically transfer tokens.
-        if (amount0Out != 0) {
-            _safeTransfer(token0, to, pool.id0, amount0Out);
-        }
-        if (amount1Out != 0) {
-            _safeTransfer(token1, to, pool.id1, amount1Out);
-        }
-
-        if (data.length != 0) {
-            IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
-        }
+        if (amount0Out != 0) _safeTransfer(token0, to, pool.id0, amount0Out);
+        if (amount1Out != 0) _safeTransfer(token1, to, pool.id1, amount1Out);
+        if (data.length != 0) IVZCallee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
 
         uint256 balance0;
         if (ethPair) {
@@ -347,13 +343,12 @@ contract VZPairs is VZERC6909 {
             amount0In = balance0 > reserve0 - amount0Out ? balance0 - (reserve0 - amount0Out) : 0;
             amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
-        if (amount0In == 0) if (amount1In == 0) revert InsufficientInputAmount();
-
+        require(amount0In != 0 || amount1In != 0, InsufficientInputAmount());
         uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * swapFee);
         uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * swapFee);
-        if (balance0Adjusted * balance1Adjusted < (uint256(reserve0) * reserve1) * 10000 ** 2) {
-            revert K();
-        }
+        require(
+            balance0Adjusted * balance1Adjusted >= (uint256(reserve0) * reserve1) * 10000 ** 2, K()
+        );
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
@@ -362,10 +357,9 @@ contract VZPairs is VZERC6909 {
     /// @dev Force balances to match reserves.
     function skim(address to, uint256 poolId) public lock {
         Pool storage pool = pools[poolId];
-        bool ethPair = pool.token0 == address(0);
 
         uint256 balance0;
-        if (ethPair) {
+        if (pool.token0 == address(0)) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
             balance0 = getBalanceOf(pool.token0);
@@ -387,10 +381,9 @@ contract VZPairs is VZERC6909 {
     /// @dev Force reserves to match balances.
     function sync(uint256 poolId) public lock {
         Pool storage pool = pools[poolId];
-        bool ethPair = pool.token0 == address(0);
 
         uint256 balance0;
-        if (ethPair) {
+        if (pool.token0 == address(0)) {
             balance0 = address(this).balance;
         } else if (pool.id0 == 0) {
             balance0 = getBalanceOf(pool.token0);
