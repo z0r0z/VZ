@@ -16,7 +16,7 @@ contract VZPairs is VZERC6909 {
         uint256 id1;
         address token0;
         address token1;
-        uint24 swapFee;
+        uint96 swapFee;
         uint112 reserve0;
         uint112 reserve1;
         uint32 blockTimestampLast;
@@ -88,7 +88,7 @@ contract VZPairs is VZERC6909 {
         uint256 id0,
         address token1,
         uint256 id1,
-        uint24 swapFee
+        uint256 swapFee
     ) public returns (uint256 liquidity) {
         require(token0 < token1, InvalidPoolTokens()); // Ensure ascending order.
         require(swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
@@ -98,7 +98,7 @@ contract VZPairs is VZERC6909 {
         Pool storage pool = pools[poolId];
         require(pool.supply == 0, PoolExists());
         (pool.token0, pool.id0, pool.token1, pool.id1, pool.swapFee) =
-            (token0, id0, token1, id1, swapFee);
+            (token0, id0, token1, id1, uint96(swapFee));
 
         uint256 balance0;
         if (pool.token0 == address(0)) {
@@ -306,7 +306,7 @@ contract VZPairs is VZERC6909 {
     ) public lock {
         require(amount0Out != 0 || amount1Out != 0, InsufficientOutputAmount());
         Pool storage pool = pools[poolId];
-        (address token0, address token1, uint24 swapFee, uint112 reserve0, uint112 reserve1) =
+        (address token0, address token1, uint96 swapFee, uint112 reserve0, uint112 reserve1) =
             (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
 
         require(amount0Out < reserve0, InsufficientLiquidity());

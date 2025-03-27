@@ -50,13 +50,13 @@ contract VZPairsTest is Test {
 
         // Create pair ID for ERC6909 tokens
         erc6909Pair =
-            uint256(keccak256(abi.encode(_token6909A, _id6909A, _token6909B, _id6909B, uint24(30))));
+            uint256(keccak256(abi.encode(_token6909A, _id6909A, _token6909B, _id6909B, uint96(30))));
 
         // Regular setup
         pairs = new VZPairs(address(1));
-        pair = uint256(keccak256(abi.encode(address(token0), 0, address(token1), 0, uint24(30))));
-        ethPair = uint256(keccak256(abi.encode(address(0), 0, address(token1), 0, uint24(30))));
-        ofPair = uint256(keccak256(abi.encode(address(0), 0, address(ofToken), 0, uint24(30))));
+        pair = uint256(keccak256(abi.encode(address(token0), 0, address(token1), 0, uint96(30))));
+        ethPair = uint256(keccak256(abi.encode(address(0), 0, address(token1), 0, uint96(30))));
+        ofPair = uint256(keccak256(abi.encode(address(0), 0, address(ofToken), 0, uint96(30))));
 
         testUser = new TestUser(pair);
 
@@ -699,7 +699,7 @@ contract VZPairsTest is Test {
         }
 
         // Calculate pair ID
-        uint256 mixedPair = uint256(keccak256(abi.encode(tokenA, idA, tokenB, idB, uint24(30))));
+        uint256 mixedPair = uint256(keccak256(abi.encode(tokenA, idA, tokenB, idB, uint96(30))));
 
         // Use direct transfers
         if (tokenA == token6909Addr) {
