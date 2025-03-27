@@ -77,6 +77,7 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    error InsufficientLiquidityMinted();
     error InvalidPoolTokens();
     error InvalidSwapFee();
     error PoolExists();
@@ -89,11 +90,11 @@ contract VZPairs is VZERC6909 {
         address token1,
         uint256 id1,
         uint256 swapFee
-    ) public payable returns (uint256 liquidity) {
+    ) public payable returns (uint256 poolId, uint256 liquidity) {
         require(token0 < token1, InvalidPoolTokens()); // Ensure ascending order.
         require(swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
 
-        uint256 poolId = uint256(keccak256(abi.encode(token0, id0, token1, id1, swapFee)));
+        poolId = uint256(keccak256(abi.encode(token0, id0, token1, id1, swapFee)));
 
         Pool storage pool = pools[poolId];
         require(pool.supply == 0, PoolExists());
@@ -116,11 +117,11 @@ contract VZPairs is VZERC6909 {
             balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
         }
 
-        liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
+        bool feeOn = _mintFee(poolId, 0, 0);
 
-        // Lock minimum liquidity to `address(0)` forever.
+        liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
         _mint(address(0), poolId, MINIMUM_LIQUIDITY);
-        // Mint the remaining liquidity to the recipient.
+        require(liquidity != 0, InsufficientLiquidityMinted());
         _mint(to, poolId, liquidity);
 
         unchecked {
@@ -129,7 +130,6 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, 0, 0);
 
-        bool feeOn = _mintFee(poolId, uint112(balance0), uint112(balance1));
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
 
         emit Mint(poolId, msg.sender, balance0, balance1);
@@ -194,8 +194,6 @@ contract VZPairs is VZERC6909 {
             delete pool.kLast;
         }
     }
-
-    error InsufficientLiquidityMinted();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function mint(address to, uint256 poolId) public payable lock returns (uint256 liquidity) {

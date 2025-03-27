@@ -211,7 +211,7 @@ contract VZPairsTest is Test {
     function testMintZeroLiquidity() public {
         token0.transfer(address(pairs), 1000);
         token1.transfer(address(pairs), 1000);
-
+        vm.expectRevert(encodeError("InsufficientLiquidityMinted()"));
         pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
     }
 
