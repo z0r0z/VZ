@@ -818,7 +818,7 @@ contract Flashloaner {
         );
     }
 
-    function uniswapV2Call(address, uint256, uint256, bytes calldata data) public {
+    function uniswapVZCall(uint256, address, uint256, uint256, bytes calldata data) public {
         address tokenAddress = abi.decode(data, (address));
         uint256 balance = ERC20(tokenAddress).balanceOf(address(this));
 
