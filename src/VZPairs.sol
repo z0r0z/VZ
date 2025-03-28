@@ -196,7 +196,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function mint(address to, uint256 poolId) public payable lock returns (uint256 liquidity) {
+    function mint(uint256 poolId, address to) public payable lock returns (uint256 liquidity) {
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
@@ -234,7 +234,7 @@ contract VZPairs is VZERC6909 {
     error InsufficientLiquidityBurned();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function burn(address to, uint256 poolId)
+    function burn(uint256 poolId, address to)
         public
         payable
         lock
@@ -362,7 +362,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Force balances to match reserves.
-    function skim(address to, uint256 poolId) public payable lock {
+    function skim(uint256 poolId, address to) public payable lock {
         Pool storage pool = pools[poolId];
 
         uint256 balance0;

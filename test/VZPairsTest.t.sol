@@ -177,7 +177,7 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 2 ether);
         token1.transfer(address(pairs), 2 ether);
 
-        pairs.mint(address(this), pair); // + 2 LP.
+        pairs.mint(pair, address(this)); // + 2 LP.
 
         assertEq(pairs.balanceOf(address(this), pair), 3 ether - 1000);
         (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
@@ -197,7 +197,7 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 2 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.mint(address(this), pair); // + 1 LP
+        pairs.mint(pair, address(this)); // + 1 LP
         assertEq(pairs.balanceOf(address(this), pair), 2 ether - 1000);
         assertReserves(3 ether, 2 ether);
     }
@@ -223,7 +223,7 @@ contract VZPairsTest is Test {
 
         uint256 liquidity = pairs.balanceOf(address(this), pair);
         pairs.transfer(address(pairs), pair, liquidity);
-        pairs.burn(address(this), pair);
+        pairs.burn(pair, address(this));
 
         assertEq(pairs.balanceOf(address(this), pair), 0);
         assertReserves(1000, 1000);
@@ -242,11 +242,11 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 2 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.mint(address(this), pair); // + 1 LP
+        pairs.mint(pair, address(this)); // + 1 LP
 
         uint256 liquidity = pairs.balanceOf(address(this), pair);
         pairs.transfer(address(pairs), pair, liquidity);
-        pairs.burn(address(this), pair);
+        pairs.burn(pair, address(this));
 
         assertEq(pairs.balanceOf(address(this), pair), 0);
         assertReserves(1500, 1000);
@@ -269,11 +269,11 @@ contract VZPairsTest is Test {
         token0.transfer(address(pairs), 2 ether);
         token1.transfer(address(pairs), 1 ether);
 
-        pairs.mint(address(this), pair); // + 1 LP
+        pairs.mint(pair, address(this)); // + 1 LP
 
         uint256 liquidity = pairs.balanceOf(address(this), pair);
         pairs.transfer(address(pairs), pair, liquidity);
-        pairs.burn(address(this), pair);
+        pairs.burn(pair, address(this));
 
         // this user is penalized for providing unbalanced liquidity
         assertEq(pairs.balanceOf(address(this), pair), 0);
@@ -297,7 +297,7 @@ contract VZPairsTest is Test {
     function testBurnZeroTotalSupply() public {
         // 0x12; If you divide or modulo by zero.
         vm.expectRevert(encodeError("MulDivFailed()"));
-        pairs.burn(address(this), pair);
+        pairs.burn(pair, address(this));
     }
 
     function testBurnZeroLiquidity() public {
@@ -308,7 +308,7 @@ contract VZPairsTest is Test {
 
         vm.prank(address(0xdeadbeef));
         vm.expectRevert(encodeError("InsufficientLiquidityBurned()"));
-        pairs.burn(address(this), pair);
+        pairs.burn(pair, address(this));
     }
 
     function testSwapBasicScenario() public {
@@ -504,7 +504,7 @@ contract VZPairsTest is Test {
         // // Price changed.
         token0.transfer(address(pairs), 2 ether);
         token1.transfer(address(pairs), 1 ether);
-        pairs.mint(address(this), pair);
+        pairs.mint(pair, address(this));
 
         (uint256 newPrice0, uint256 newPrice1) = calculateCurrentPrice();
 
@@ -580,7 +580,7 @@ contract VZPairsTest is Test {
         token6909B.transfer(address(pairs), token6909BId, 2 ether);
 
         // Mint more LP tokens
-        pairs.mint(address(this), erc6909Pair);
+        pairs.mint(erc6909Pair, address(this));
 
         // Verify additional LP tokens were minted
         assertEq(pairs.balanceOf(address(this), erc6909Pair), 3 ether - 1000);
@@ -600,7 +600,7 @@ contract VZPairsTest is Test {
         pairs.transfer(address(pairs), erc6909Pair, liquidity);
 
         // Burn LP tokens to get tokens back
-        pairs.burn(address(this), erc6909Pair);
+        pairs.burn(erc6909Pair, address(this));
 
         // Verify LP tokens were burned
         assertEq(pairs.balanceOf(address(this), erc6909Pair), 0);
@@ -783,7 +783,7 @@ contract TestUser {
     function removeLiquidity(address payable pairAddress_) public {
         uint256 liquidity = VZPairs(pairAddress_).balanceOf(address(this), id);
         VZPairs(pairAddress_).transfer(pairAddress_, id, liquidity);
-        VZPairs(payable(pairAddress_)).burn(address(this), id);
+        VZPairs(payable(pairAddress_)).burn(id, address(this));
     }
 
     receive() external payable {}
