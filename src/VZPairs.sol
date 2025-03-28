@@ -26,11 +26,13 @@ contract VZPairs is VZERC6909 {
         uint256 supply;
     }
 
+    error Reentrancy();
+
     /// @dev Reentrancy guard (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol).
     modifier lock() {
         assembly ("memory-safe") {
             if tload(0x929eee149b4bd21268) {
-                mstore(0x00, 0xab143c06)
+                mstore(0x00, 0xab143c06) // `Reentrancy()`.
                 revert(0x1c, 0x04)
             }
             tstore(0x929eee149b4bd21268, address())
