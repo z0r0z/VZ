@@ -43,14 +43,82 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results) {
+        results = new bytes[](data.length);
+        for (uint256 i = 0; i < data.length; i++) {
+            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
+            require(success, "Multicall: call failed");
+            results[i] = result;
+        }
+    }
+
+    error InsufficientETH();
+
+    /// @dev Helper function to pull token balances into pool.
+    function deposit(
+        address token0,
+        uint256 id0,
+        address token1,
+        uint256 id1,
+        uint256 swapFee,
+        uint256 amount0,
+        uint256 amount1
+    ) public payable returns (uint256 poolId) {
+        // Enforce token ordering when at least one token is ETH/ERC20 (id == 0).
+        require(id0 > 0 && id1 > 0 ? true : token0 < token1, InvalidPoolTokens());
+        poolId = uint256(keccak256(abi.encode(token0, id0, token1, id1, swapFee)));
+        if (token0 == address(0)) require(msg.value == amount0, InsufficientETH());
+        else _safeTransferFrom(token0, msg.sender, id0, amount0);
+        _safeTransferFrom(token1, msg.sender, id1, amount1);
+        _deposit(poolId, amount0, amount1);
+    }
+
+    /// @dev Helper function to log transient balances into pool and accumulate.
+    function _deposit(uint256 poolId, uint256 amount0, uint256 amount1) internal {
+        assembly ("memory-safe") {
+            if amount0 { tstore(poolId, add(tload(poolId), amount0)) }
+            if amount1 { tstore(add(poolId, 1), add(tload(add(poolId, 1)), amount1)) }
+        }
+    }
+
+    /// @dev Helper function to clear transient balances from pool after op.
+    function _clear(uint256 poolId) internal {
+        assembly ("memory-safe") {
+            tstore(poolId, 0)
+            tstore(add(poolId, 1), 0)
+        }
+    }
+
+    /// @dev Helper function to fetch transient balances during liquidity event.
+    function _getDeposits(uint256 poolId)
+        internal
+        view
+        returns (uint256 deposit0, uint256 deposit1)
+    {
+        assembly ("memory-safe") {
+            deposit0 := tload(poolId)
+            deposit1 := tload(add(poolId, 1))
+        }
+    }
+
     /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases.
     function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
+        if (to == address(this)) return;
         if (token == address(0)) {
             safeTransferETH(to, amount);
         } else if (id == 0) {
             safeTransfer(token, to, amount);
         } else {
             VZERC6909(token).transfer(to, id, amount);
+        }
+    }
+
+    /// @dev Helper function to pull tokens considering ERC6909 and ETH cases.
+    function _safeTransferFrom(address token, address from, uint256 id, uint256 amount) internal {
+        if (id == 0) {
+            safeTransferFrom(token, amount);
+        } else {
+            VZERC6909(token).transferFrom(from, address(this), id, amount);
         }
     }
 
@@ -154,7 +222,8 @@ contract VZPairs is VZERC6909 {
         uint256 id1,
         uint256 swapFee
     ) public payable lock returns (uint256 poolId, uint256 liquidity) {
-        require(token0 < token1, InvalidPoolTokens()); // Ensure ascending order.
+        // Enforce token ordering when at least one token is ETH/ERC20 (id == 0).
+        require(id0 > 0 && id1 > 0 ? true : token0 < token1, InvalidPoolTokens());
         require(swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
 
         poolId = uint256(keccak256(abi.encode(token0, id0, token1, id1, swapFee)));
@@ -164,22 +233,7 @@ contract VZPairs is VZERC6909 {
         (pool.token0, pool.id0, pool.token1, pool.id1, pool.swapFee) =
             (token0, id0, token1, id1, uint96(swapFee));
 
-        uint256 balance0;
-        if (pool.token0 == address(0)) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0);
-        } else {
-            balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
-        }
-
-        uint256 balance1;
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1);
-        } else {
-            balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
-        }
-
+        (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
         bool feeOn = _mintFee(poolId, 0, 0);
 
         liquidity = sqrt(balance0 * balance1) - MINIMUM_LIQUIDITY;
@@ -192,6 +246,7 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, 0, 0);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
+        _clear(poolId);
         emit Mint(poolId, msg.sender, balance0, balance1);
     }
 
@@ -201,34 +256,20 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
 
-        uint256 balance0;
-        if (pool.token0 == address(0)) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0);
-        } else {
-            balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
-        }
-
-        uint256 balance1;
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1);
-        } else {
-            balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
-        }
-
-        uint256 amount0 = balance0 - reserve0;
-        uint256 amount1 = balance1 - reserve1;
+        (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
+        uint256 balance0 = reserve0 + deposit0;
+        uint256 balance1 = reserve1 + deposit1;
 
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
-        liquidity = min(mulDiv(amount0, supply, reserve0), mulDiv(amount1, supply, reserve1));
+        liquidity = min(mulDiv(deposit0, supply, reserve0), mulDiv(deposit1, supply, reserve1));
         require(liquidity != 0, InsufficientLiquidityMinted());
         _mint(to, poolId, liquidity);
         pool.supply += liquidity;
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
-        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
-        emit Mint(poolId, msg.sender, amount0, amount1);
+        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
+        _clear(poolId);
+        emit Mint(poolId, msg.sender, deposit0, deposit1);
     }
 
     error InsufficientLiquidityBurned();
@@ -244,23 +285,9 @@ contract VZPairs is VZERC6909 {
         (address token0, address token1, uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.token0, pool.token1, pool.reserve0, pool.reserve1, pool.supply);
 
-        bool ethPair = token0 == address(0);
-
-        uint256 balance0;
-        if (ethPair) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(token0);
-        } else {
-            balance0 = VZERC6909(token0).balanceOf(address(this), pool.id0);
-        }
-
-        uint256 balance1;
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(token1);
-        } else {
-            balance1 = VZERC6909(token1).balanceOf(address(this), pool.id1);
-        }
+        (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
+        uint256 balance0 = reserve0 + deposit0;
+        uint256 balance1 = reserve1 + deposit1;
 
         uint256 liquidity = balanceOf(address(this), poolId);
 
@@ -277,19 +304,8 @@ contract VZPairs is VZERC6909 {
         _safeTransfer(token0, to, pool.id0, amount0);
         _safeTransfer(token1, to, pool.id1, amount1);
 
-        if (ethPair) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(token0);
-        } else {
-            balance0 = VZERC6909(token0).balanceOf(address(this), pool.id0);
-        }
-
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(token1);
-        } else {
-            balance1 = VZERC6909(token1).balanceOf(address(this), pool.id1);
-        }
+        balance0 = balance0 - amount0;
+        balance1 = balance1 - amount1;
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
@@ -324,25 +340,11 @@ contract VZPairs is VZERC6909 {
         // Optimistically transfer tokens.
         if (amount0Out > 0) _safeTransfer(token0, to, pool.id0, amount0Out);
         if (amount1Out > 0) _safeTransfer(token1, to, pool.id1, amount1Out);
-        if (data.length > 0) {
-            IVZCallee(to).uniswapVZCall(poolId, msg.sender, amount0Out, amount1Out, data);
-        }
+        if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
 
-        uint256 balance0;
-        if (token0 == address(0)) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(token0);
-        } else {
-            balance0 = VZERC6909(token0).balanceOf(address(this), pool.id0);
-        }
-
-        uint256 balance1;
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(token1);
-        } else {
-            balance1 = VZERC6909(token1).balanceOf(address(this), pool.id1);
-        }
+        (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
+        uint256 balance0 = reserve0 + deposit0 - amount0Out;
+        uint256 balance1 = reserve1 + deposit1 - amount1Out;
 
         uint256 amount0In;
         uint256 amount1In;
@@ -364,23 +366,7 @@ contract VZPairs is VZERC6909 {
     /// @dev Force balances to match reserves.
     function skim(uint256 poolId, address to) public payable lock {
         Pool storage pool = pools[poolId];
-
-        uint256 balance0;
-        if (pool.token0 == address(0)) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0);
-        } else {
-            balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
-        }
-
-        uint256 balance1;
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1);
-        } else {
-            balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
-        }
-
+        (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
         _safeTransfer(pool.token0, to, pool.id0, balance0 - pool.reserve0);
         _safeTransfer(pool.token1, to, pool.id1, balance1 - pool.reserve1);
     }
@@ -388,23 +374,7 @@ contract VZPairs is VZERC6909 {
     /// @dev Force reserves to match balances.
     function sync(uint256 poolId) public payable lock {
         Pool storage pool = pools[poolId];
-
-        uint256 balance0;
-        if (pool.token0 == address(0)) {
-            balance0 = address(this).balance;
-        } else if (pool.id0 == 0) {
-            balance0 = getBalanceOf(pool.token0);
-        } else {
-            balance0 = VZERC6909(pool.token0).balanceOf(address(this), pool.id0);
-        }
-
-        uint256 balance1;
-        if (pool.id1 == 0) {
-            balance1 = getBalanceOf(pool.token1);
-        } else {
-            balance1 = VZERC6909(pool.token1).balanceOf(address(this), pool.id1);
-        }
-
+        (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
     }
 
@@ -423,7 +393,7 @@ contract VZPairs is VZERC6909 {
 
 /// @dev Minimal VZ swap call interface.
 interface IVZCallee {
-    function uniswapVZCall(
+    function vzCall(
         uint256 poolId,
         address sender,
         uint256 amount0,
