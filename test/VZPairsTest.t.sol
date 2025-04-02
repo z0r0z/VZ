@@ -170,10 +170,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
-
-        uint256 poolId = computePoolId(pair);
+        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this));
 
         assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
@@ -187,17 +185,15 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
-
-        uint256 poolId = computePoolId(pair);
+        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this));
 
         assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
         (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 1 ether);
         vm.expectRevert(PoolExists.selector);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        pairs.initialize(pair, address(this));
     }
 
     error Overflow();
@@ -205,24 +201,21 @@ contract VZPairsTest is Test {
     function testMintBootstrapFailOverflow() public {
         ofToken.approve(address(pairs), type(uint120).max);
 
-        pairs.deposit{value: 1 ether}(
-            address(0), 0, address(ofToken), 0, 30, 1 ether, type(uint120).max
-        );
+        uint256 poolId = pairs.deposit{value: 1 ether}(ofPair, 1 ether, type(uint120).max);
         vm.expectRevert(Overflow.selector);
-        pairs.initialize(address(this), address(0), 0, address(ofToken), 0, 30);
+        pairs.initialize(ofPair, address(this));
     }
 
     function testMintWhenTheresLiquidity() public {
         token0.approve(address(pairs), 3 ether);
         token1.approve(address(pairs), 3 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30); // + 1 LP.
+        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this)); // + 1 LP.
 
         vm.warp(37);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 2 ether, 2 ether);
-        uint256 poolId = computePoolId(pair);
+        pairs.deposit(pair, 2 ether, 2 ether);
         pairs.mint(pair, address(this)); // + 2 LP.
 
         assertEq(pairs.balanceOf(address(this), poolId), 3 ether - 1000);
@@ -235,15 +228,13 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 3 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30); // + 1 LP.
-
-        uint256 poolId = computePoolId(pair);
+        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this)); // + 1 LP.
 
         assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 2 ether, 1 ether);
+        pairs.deposit(pair, 2 ether, 1 ether);
 
         pairs.mint(pair, address(this)); // + 1 LP
         assertEq(pairs.balanceOf(address(this), poolId), 2 ether - 1000);
@@ -253,26 +244,24 @@ contract VZPairsTest is Test {
     function testMintLiquidityUnderflow() public {
         // 0x11: If an arithmetic operation results in underflow or overflow outside of an unchecked { ... } block.
         vm.expectRevert(encodeError("Panic(uint256)", 0x11));
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        pairs.initialize(pair, address(this));
     }
 
     function testMintZeroLiquidity() public {
         token0.approve(address(pairs), 1000);
         token1.approve(address(pairs), 1000);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1000, 1000);
+        pairs.deposit(pair, 1000, 1000);
         vm.expectRevert(encodeError("InsufficientLiquidityMinted()"));
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        pairs.initialize(pair, address(this));
     }
 
     function testBurn() public {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
-
-        uint256 poolId = computePoolId(pair);
+        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this));
 
         uint256 liquidity = pairs.balanceOf(address(this), poolId);
         pairs.transfer(address(pairs), poolId, liquidity);
@@ -290,14 +279,12 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 3 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this));
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 2 ether, 1 ether);
+        pairs.deposit(pair, 2 ether, 1 ether);
 
-        pairs.mint(pair, address(this)); // + 1 LP
-
-        uint256 poolId = computePoolId(pair);
+        pairs.mint(pair, address(this)); // + 1 LP.
 
         uint256 liquidity = pairs.balanceOf(address(this), poolId);
         pairs.transfer(address(pairs), poolId, liquidity);
@@ -326,7 +313,7 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 2 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 2 ether, 1 ether);
+        pairs.deposit(pair, 2 ether, 1 ether);
 
         pairs.mint(pair, address(this)); // + 1 LP
 
@@ -364,8 +351,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.initialize(pair, address(this));
 
         vm.prank(address(0xdeadbeef));
         vm.expectRevert(encodeError("InsufficientLiquidityBurned()"));
@@ -376,11 +363,11 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 2 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        uint256 poolId = pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.initialize(pair, address(this));
 
         uint256 amountOut = 0.181322178776029826 ether;
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 0.1 ether, 0);
+        pairs.deposit(pair, 0.1 ether, 0);
         pairs.swap(pair, 0, amountOut, address(this), "");
 
         assertEq(
@@ -400,11 +387,11 @@ contract VZPairsTest is Test {
         uint256 startingETHBalance = address(this).balance;
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit{value: 1 ether}(address(0), 0, address(token1), 0, 30, 1 ether, 2 ether);
-        pairs.initialize(address(this), address(0), 0, address(token1), 0, 30);
+        pairs.deposit{value: 1 ether}(ethPair, 1 ether, 2 ether);
+        pairs.initialize(ethPair, address(this));
 
         uint256 amountOut = 0.181322178776029826 ether;
-        pairs.deposit{value: 0.1 ether}(address(0), 0, address(token1), 0, 30, 0.1 ether, 0);
+        pairs.deposit{value: 0.1 ether}(ethPair, 0.1 ether, 0);
         pairs.swap(ethPair, 0, amountOut, address(this), "");
 
         assertEq(
@@ -424,10 +411,10 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 2.2 ether);
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 2 ether);
-        pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
+        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.initialize(pair, address(this));
 
-        pairs.deposit(address(token0), 0, address(token1), 0, 30, 0, 0.2 ether);
+        pairs.deposit(pair, 0, 0.2 ether);
         pairs.swap(pair, 0.09 ether, 0, address(this), "");
 
         assertEq(
@@ -844,21 +831,13 @@ contract TestUser {
         bool ethBased = token0Address_ == address(0);
         if (ethBased) {
             ERC20(token1Address_).approve(pairsAddress_, amount1_);
-            VZPairs(pairsAddress_).deposit{value: amount0_}(
-                token0Address_, 0, token1Address_, 0, 30, amount0_, amount1_
-            );
-            VZPairs(pairsAddress_).initialize(
-                address(this), token0Address_, 0, token1Address_, 0, 30
-            );
+            VZPairs(pairsAddress_).deposit{value: amount0_}(pair, amount0_, amount1_);
+            VZPairs(pairsAddress_).initialize(pair, address(this));
         } else {
             ERC20(token0Address_).approve(pairsAddress_, amount0_);
             ERC20(token1Address_).approve(pairsAddress_, amount1_);
-            VZPairs(pairsAddress_).deposit(
-                token0Address_, 0, token1Address_, 0, 30, amount0_, amount1_
-            );
-            VZPairs(pairsAddress_).initialize(
-                address(this), token0Address_, 0, token1Address_, 0, 30
-            );
+            VZPairs(pairsAddress_).deposit(pair, amount0_, amount1_);
+            VZPairs(pairsAddress_).initialize(pair, address(this));
         }
     }
 
