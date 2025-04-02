@@ -11,12 +11,15 @@ contract VZPairs is VZERC6909 {
 
     mapping(uint256 poolId => Pool) public pools;
 
-    struct Pool {
+    struct PoolKey {
         uint256 id0;
         uint256 id1;
         address token0;
         address token1;
         uint96 swapFee;
+    }
+
+    struct Pool {
         uint112 reserve0;
         uint112 reserve1;
         uint32 blockTimestampLast;
@@ -71,6 +74,11 @@ contract VZPairs is VZERC6909 {
         else _safeTransferFrom(token0, msg.sender, id0, amount0);
         _safeTransferFrom(token1, msg.sender, id1, amount1);
         _deposit(poolId, amount0, amount1);
+    }
+
+    /// @dev Helper function to compute poolId from PoolKey.
+    function computePoolId(PoolKey memory key) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(key.token0, key.id0, key.token1, key.id1, key.swapFee)));
     }
 
     /// @dev Helper function to log transient balances into pool and accumulate.
@@ -230,8 +238,6 @@ contract VZPairs is VZERC6909 {
 
         Pool storage pool = pools[poolId];
         require(pool.supply == 0, PoolExists());
-        (pool.token0, pool.id0, pool.token1, pool.id1, pool.swapFee) =
-            (token0, id0, token1, id1, uint96(swapFee));
 
         (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
         bool feeOn = _mintFee(poolId, 0, 0);
@@ -251,7 +257,13 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function mint(uint256 poolId, address to) public payable lock returns (uint256 liquidity) {
+    function mint(PoolKey calldata poolKey, address to)
+        public
+        payable
+        lock
+        returns (uint256 liquidity)
+    {
+        uint256 poolId = computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
@@ -275,15 +287,16 @@ contract VZPairs is VZERC6909 {
     error InsufficientLiquidityBurned();
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function burn(uint256 poolId, address to)
+    function burn(PoolKey calldata poolKey, address to)
         public
         payable
         lock
         returns (uint256 amount0, uint256 amount1)
     {
+        uint256 poolId = computePoolId(poolKey);
         Pool storage pool = pools[poolId];
-        (address token0, address token1, uint112 reserve0, uint112 reserve1, uint256 supply) =
-            (pool.token0, pool.token1, pool.reserve0, pool.reserve1, pool.supply);
+        (uint112 reserve0, uint112 reserve1, uint256 supply) =
+            (pool.reserve0, pool.reserve1, pool.supply);
 
         (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
         uint256 balance0 = reserve0 + deposit0;
@@ -301,8 +314,8 @@ contract VZPairs is VZERC6909 {
             pool.supply -= liquidity;
         }
 
-        _safeTransfer(token0, to, pool.id0, amount0);
-        _safeTransfer(token1, to, pool.id1, amount1);
+        _safeTransfer(poolKey.token0, to, poolKey.id0, amount0);
+        _safeTransfer(poolKey.token1, to, poolKey.id1, amount1);
 
         balance0 = balance0 - amount0;
         balance1 = balance1 - amount1;
@@ -320,26 +333,26 @@ contract VZPairs is VZERC6909 {
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function swap(
-        uint256 poolId,
+        PoolKey calldata poolKey,
         uint256 amount0Out,
         uint256 amount1Out,
         address to,
         bytes calldata data
     ) public payable lock {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
+        uint256 poolId = computePoolId(poolKey);
         Pool storage pool = pools[poolId];
-        (address token0, address token1, uint96 swapFee, uint112 reserve0, uint112 reserve1) =
-            (pool.token0, pool.token1, pool.swapFee, pool.reserve0, pool.reserve1);
+        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         require(amount0Out < reserve0, InsufficientLiquidity());
         require(amount1Out < reserve1, InsufficientLiquidity());
 
-        require(to != token0, InvalidTo());
-        require(to != token1, InvalidTo());
+        require(to != poolKey.token0, InvalidTo());
+        require(to != poolKey.token1, InvalidTo());
 
         // Optimistically transfer tokens.
-        if (amount0Out > 0) _safeTransfer(token0, to, pool.id0, amount0Out);
-        if (amount1Out > 0) _safeTransfer(token1, to, pool.id1, amount1Out);
+        if (amount0Out > 0) _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
+        if (amount1Out > 0) _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
         if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
 
         (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
@@ -353,8 +366,8 @@ contract VZPairs is VZERC6909 {
             amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
         require(amount0In > 0 || amount1In > 0, InsufficientInputAmount());
-        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * swapFee);
-        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * swapFee);
+        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * poolKey.swapFee);
+        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * poolKey.swapFee);
         require(
             balance0Adjusted * balance1Adjusted >= (uint256(reserve0) * reserve1) * 10000 ** 2, K()
         );
@@ -364,15 +377,17 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Force balances to match reserves.
-    function skim(uint256 poolId, address to) public payable lock {
+    function skim(PoolKey calldata poolKey, address to) public payable lock {
+        uint256 poolId = computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
-        _safeTransfer(pool.token0, to, pool.id0, balance0 - pool.reserve0);
-        _safeTransfer(pool.token1, to, pool.id1, balance1 - pool.reserve1);
+        _safeTransfer(poolKey.token0, to, poolKey.id0, balance0 - pool.reserve0);
+        _safeTransfer(poolKey.token1, to, poolKey.id1, balance1 - pool.reserve1);
     }
 
     /// @dev Force reserves to match balances.
-    function sync(uint256 poolId) public payable lock {
+    function sync(PoolKey calldata poolKey) public payable lock {
+        uint256 poolId = computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);

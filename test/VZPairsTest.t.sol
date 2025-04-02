@@ -13,16 +13,18 @@ contract VZPairsTest is Test {
     MockERC20 token1;
     MockERC20 ofToken;
     VZPairs pairs;
-    uint256 pair;
-    uint256 ethPair;
-    uint256 ofPair;
     TestUser testUser;
 
     MockERC6909 token6909A;
     MockERC6909 token6909B;
     uint256 token6909AId;
     uint256 token6909BId;
-    uint256 erc6909Pair;
+
+    // Use PoolKey structs with the same variable names
+    VZPairs.PoolKey pair;
+    VZPairs.PoolKey ethPair;
+    VZPairs.PoolKey ofPair;
+    VZPairs.PoolKey erc6909Pair;
 
     function setUp() public {
         // Existing setup code
@@ -48,17 +50,46 @@ contract VZPairsTest is Test {
             ? (address(token6909A), address(token6909B), token6909AId, token6909BId)
             : (address(token6909B), address(token6909A), token6909BId, token6909AId);
 
-        // Create pair ID for ERC6909 tokens
-        erc6909Pair =
-            uint256(keccak256(abi.encode(_token6909A, _id6909A, _token6909B, _id6909B, 30)));
+        // Create PoolKey for ERC6909 tokens
+        erc6909Pair = VZPairs.PoolKey({
+            token0: _token6909A,
+            id0: _id6909A,
+            token1: _token6909B,
+            id1: _id6909B,
+            swapFee: 30
+        });
 
         // Regular setup
         pairs = new VZPairs(address(1));
-        pair = uint256(keccak256(abi.encode(address(token0), 0, address(token1), 0, 30)));
-        ethPair = uint256(keccak256(abi.encode(address(0), 0, address(token1), 0, 30)));
-        ofPair = uint256(keccak256(abi.encode(address(0), 0, address(ofToken), 0, 30)));
 
-        testUser = new TestUser(pair);
+        // Create PoolKey structs using the same variable names as before
+        pair = VZPairs.PoolKey({
+            token0: address(token0),
+            id0: 0,
+            token1: address(token1),
+            id1: 0,
+            swapFee: 30
+        });
+
+        ethPair = VZPairs.PoolKey({
+            token0: address(0),
+            id0: 0,
+            token1: address(token1),
+            id1: 0,
+            swapFee: 30
+        });
+
+        ofPair = VZPairs.PoolKey({
+            token0: address(0),
+            id0: 0,
+            token1: address(ofToken),
+            id1: 0,
+            swapFee: 30
+        });
+
+        // For the TestUser, we need to compute the actual pair ID
+        uint256 pairId = uint256(keccak256(abi.encode(address(token0), 0, address(token1), 0, 30)));
+        testUser = new TestUser(pairId, pair);
 
         // Mint regular tokens
         token0.mint(address(this), 10 ether);
@@ -77,12 +108,17 @@ contract VZPairsTest is Test {
         payable(address(testUser)).transfer(3.33 ether);
     }
 
+    /// @dev Helper function to compute poolId from PoolKey.
+    function computePoolId(VZPairs.PoolKey memory key) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(key.token0, key.id0, key.token1, key.id1, key.swapFee)));
+    }
+
     // Add helper functions for ERC6909 assertion
     function assertERC6909Reserves(uint112 expectedReserve0, uint112 expectedReserve1)
         internal
         view
     {
-        (,,,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(erc6909Pair);
+        (uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(computePoolId(erc6909Pair));
         assertEq(reserve0, expectedReserve0, "unexpected ERC6909 reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected ERC6909 reserve1");
     }
@@ -100,31 +136,32 @@ contract VZPairsTest is Test {
     }
 
     function assertReserves(uint112 expectedReserve0, uint112 expectedReserve1) internal view {
-        (,,,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(pair);
+        (uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(computePoolId(pair));
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
 
     function assertReservesETH(uint112 expectedReserve0, uint112 expectedReserve1) internal view {
-        (,,,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(ethPair);
+        (uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(computePoolId(ethPair));
         assertEq(reserve0, expectedReserve0, "unexpected reserve0");
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
 
     function assertCumulativePrices(uint256 expectedPrice0, uint256 expectedPrice1) internal view {
-        (,,,,,,,, uint256 price0CumulativeLast, uint256 price1CumulativeLast,,) = pairs.pools(pair);
+        (,,, uint256 price0CumulativeLast, uint256 price1CumulativeLast,,) =
+            pairs.pools(computePoolId(pair));
         assertEq(price0CumulativeLast, expectedPrice0, "unexpected cumulative price 0");
         assertEq(price1CumulativeLast, expectedPrice1, "unexpected cumulative price 1");
     }
 
     function calculateCurrentPrice() internal view returns (uint256 price0, uint256 price1) {
-        (,,,,, uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(pair);
+        (uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(computePoolId(pair));
         price0 = reserve0 > 0 ? (reserve1 * uint256(UQ112x112.Q112)) / reserve0 : 0;
         price1 = reserve1 > 0 ? (reserve0 * uint256(UQ112x112.Q112)) / reserve1 : 0;
     }
 
     function assertBlockTimestampLast(uint32 expected) internal view {
-        (,,,,,,, uint32 blockTimestampLast,,,,) = pairs.pools(pair);
+        (,, uint32 blockTimestampLast,,,,) = pairs.pools(computePoolId(pair));
 
         assertEq(blockTimestampLast, expected, "unexpected blockTimestampLast");
     }
@@ -136,9 +173,11 @@ contract VZPairsTest is Test {
         pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
         pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
 
-        assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
+        uint256 poolId = computePoolId(pair);
+
+        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
-        (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 1 ether);
     }
 
@@ -151,9 +190,11 @@ contract VZPairsTest is Test {
         pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
         pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
 
-        assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
+        uint256 poolId = computePoolId(pair);
+
+        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
-        (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 1 ether);
         vm.expectRevert(PoolExists.selector);
         pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
@@ -181,10 +222,11 @@ contract VZPairsTest is Test {
         vm.warp(37);
 
         pairs.deposit(address(token0), 0, address(token1), 0, 30, 2 ether, 2 ether);
+        uint256 poolId = computePoolId(pair);
         pairs.mint(pair, address(this)); // + 2 LP.
 
-        assertEq(pairs.balanceOf(address(this), pair), 3 ether - 1000);
-        (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
+        assertEq(pairs.balanceOf(address(this), poolId), 3 ether - 1000);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 3 ether);
         assertReserves(3 ether, 3 ether);
     }
@@ -196,13 +238,15 @@ contract VZPairsTest is Test {
         pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
         pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30); // + 1 LP.
 
-        assertEq(pairs.balanceOf(address(this), pair), 1 ether - 1000);
+        uint256 poolId = computePoolId(pair);
+
+        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
 
         pairs.deposit(address(token0), 0, address(token1), 0, 30, 2 ether, 1 ether);
 
         pairs.mint(pair, address(this)); // + 1 LP
-        assertEq(pairs.balanceOf(address(this), pair), 2 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), poolId), 2 ether - 1000);
         assertReserves(3 ether, 2 ether);
     }
 
@@ -228,13 +272,15 @@ contract VZPairsTest is Test {
         pairs.deposit(address(token0), 0, address(token1), 0, 30, 1 ether, 1 ether);
         pairs.initialize(address(this), address(token0), 0, address(token1), 0, 30);
 
-        uint256 liquidity = pairs.balanceOf(address(this), pair);
-        pairs.transfer(address(pairs), pair, liquidity);
+        uint256 poolId = computePoolId(pair);
+
+        uint256 liquidity = pairs.balanceOf(address(this), poolId);
+        pairs.transfer(address(pairs), poolId, liquidity);
         pairs.burn(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), pair), 0);
+        assertEq(pairs.balanceOf(address(this), poolId), 0);
         assertReserves(1000, 1000);
-        (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1000);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
@@ -251,13 +297,15 @@ contract VZPairsTest is Test {
 
         pairs.mint(pair, address(this)); // + 1 LP
 
-        uint256 liquidity = pairs.balanceOf(address(this), pair);
-        pairs.transfer(address(pairs), pair, liquidity);
+        uint256 poolId = computePoolId(pair);
+
+        uint256 liquidity = pairs.balanceOf(address(this), poolId);
+        pairs.transfer(address(pairs), poolId, liquidity);
         pairs.burn(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), pair), 0);
+        assertEq(pairs.balanceOf(address(this), poolId), 0);
         assertReserves(1500, 1000);
-        (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1500);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
@@ -268,9 +316,11 @@ contract VZPairsTest is Test {
             payable(address(pairs)), address(token0), address(token1), 1 ether, 1 ether
         );
 
-        assertEq(pairs.balanceOf(address(this), pair), 0);
-        assertEq(pairs.balanceOf(address(testUser), pair), 1 ether - 1000);
-        (,,,,,,,,,,, uint256 supply) = pairs.pools(pair);
+        uint256 poolId = computePoolId(pair);
+
+        assertEq(pairs.balanceOf(address(this), poolId), 0);
+        assertEq(pairs.balanceOf(address(testUser), poolId), 1 ether - 1000);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
         assertEq(supply, 1 ether);
 
         token0.approve(address(pairs), 2 ether);
@@ -280,14 +330,14 @@ contract VZPairsTest is Test {
 
         pairs.mint(pair, address(this)); // + 1 LP
 
-        uint256 liquidity = pairs.balanceOf(address(this), pair);
-        pairs.transfer(address(pairs), pair, liquidity);
+        uint256 liquidity = pairs.balanceOf(address(this), poolId);
+        pairs.transfer(address(pairs), poolId, liquidity);
         pairs.burn(pair, address(this));
 
         // this user is penalized for providing unbalanced liquidity
-        assertEq(pairs.balanceOf(address(this), pair), 0);
+        assertEq(pairs.balanceOf(address(this), poolId), 0);
         assertReserves(1.5 ether, 1 ether);
-        (,,,,,,,,,,, supply) = pairs.pools(pair);
+        (,,,,,, supply) = pairs.pools(poolId);
         assertEq(supply, 1 ether);
         assertEq(token0.balanceOf(address(this)), 10 ether - 0.5 ether);
         assertEq(token1.balanceOf(address(this)), 10 ether);
@@ -295,9 +345,9 @@ contract VZPairsTest is Test {
         testUser.removeLiquidity(payable(address(pairs)));
 
         // testUser receives the amount collected from this user
-        assertEq(pairs.balanceOf(address(testUser), pair), 0);
+        assertEq(pairs.balanceOf(address(testUser), poolId), 0);
         assertReserves(1500, 1000);
-        (,,,,,,,,,,, supply) = pairs.pools(pair);
+        (,,,,,, supply) = pairs.pools(poolId);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(testUser)), 10 ether + 0.5 ether - 1500);
         assertEq(token1.balanceOf(address(testUser)), 10 ether - 1000);
@@ -777,8 +827,11 @@ contract VZPairsTest is Test {
 contract TestUser {
     uint256 immutable id;
 
-    constructor(uint256 ID) payable {
+    VZPairs.PoolKey pair;
+
+    constructor(uint256 ID, VZPairs.PoolKey memory _pair) payable {
         id = ID;
+        pair = _pair;
     }
 
     function provideLiquidity(
@@ -812,7 +865,7 @@ contract TestUser {
     function removeLiquidity(address payable pairAddress_) public {
         uint256 liquidity = VZPairs(pairAddress_).balanceOf(address(this), id);
         VZPairs(pairAddress_).transfer(pairAddress_, id, liquidity);
-        VZPairs(payable(pairAddress_)).burn(id, address(this));
+        VZPairs(payable(pairAddress_)).burn(pair, address(this));
     }
 
     receive() external payable {}
