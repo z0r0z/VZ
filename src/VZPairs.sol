@@ -46,35 +46,6 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results) {
-        results = new bytes[](data.length);
-        for (uint256 i = 0; i < data.length; i++) {
-            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
-            require(success, "Multicall: call failed");
-            results[i] = result;
-        }
-    }
-
-    error InsufficientETH();
-
-    /// @dev Helper function to pull token balances into pool.
-    function deposit(PoolKey calldata poolKey, uint256 amount0, uint256 amount1)
-        public
-        payable
-        returns (uint256 poolId)
-    {
-        // Enforce token ordering when at least one token is ETH/ERC20 (id == 0).
-        require(
-            poolKey.id0 > 0 && poolKey.id1 > 0 ? true : poolKey.token0 < poolKey.token1,
-            InvalidPoolTokens()
-        );
-        poolId = _computePoolId(poolKey);
-        if (poolKey.token0 == address(0)) require(msg.value == amount0, InsufficientETH());
-        else _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amount0);
-        _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amount1);
-        _deposit(poolId, amount0, amount1);
-    }
-
     /// @dev Helper function to compute poolId from PoolKey.
     function _computePoolId(PoolKey memory key) internal pure returns (uint256 poolId) {
         assembly ("memory-safe") {
@@ -221,6 +192,37 @@ contract VZPairs is VZERC6909 {
         } else if (pool.kLast != 0) {
             delete pool.kLast;
         }
+    }
+
+    error MulticallFail();
+
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results) {
+        results = new bytes[](data.length);
+        for (uint256 i; i != data.length; ++i) {
+            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
+            require(success, MulticallFail());
+            results[i] = result;
+        }
+    }
+
+    error InsufficientETH();
+
+    /// @dev Helper function to pull token balances into pool.
+    function deposit(PoolKey calldata poolKey, uint256 amount0, uint256 amount1)
+        public
+        payable
+        returns (uint256 poolId)
+    {
+        // Enforce token ordering when at least one token is ETH/ERC20 (id == 0).
+        require(
+            poolKey.id0 > 0 && poolKey.id1 > 0 ? true : poolKey.token0 < poolKey.token1,
+            InvalidPoolTokens()
+        );
+        poolId = _computePoolId(poolKey);
+        if (poolKey.token0 == address(0)) require(msg.value == amount0, InsufficientETH());
+        else _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amount0);
+        _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amount1);
+        _deposit(poolId, amount0, amount1);
     }
 
     error InsufficientLiquidityMinted();
@@ -400,15 +402,58 @@ contract VZPairs is VZERC6909 {
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
     }
 
-    /// @dev Native token receiver.
+    error Unauthorized();
+
+    /// @dev Set the protocol fee receiver.
+    function setFeeTo(address feeTo) public payable {
+        assembly ("memory-safe") {
+            if iszero(eq(caller(), sload(0x00))) {
+                mstore(0x00, 0x82b42900) // `Unauthorized()`.
+                revert(0x1c, 0x04)
+            }
+            sstore(0x20, feeTo)
+        }
+    }
+
+    /// @dev Set the protocol `feeToSetter`.
+    function setFeeToSetter(address feeToSetter) public payable {
+        assembly ("memory-safe") {
+            if iszero(eq(caller(), sload(0x00))) {
+                mstore(0x00, 0x82b42900) // `Unauthorized()`.
+                revert(0x1c, 0x04)
+            }
+            sstore(0x00, feeToSetter)
+        }
+    }
+
+    /// @dev Native token fallback.
     receive() external payable {}
 
-    /// @dev Fee management fallback.
+    /// @dev Calldata compression (https://github.com/Vectorized/solady/blob/main/src/utils/LibZip).
     fallback() external payable {
         assembly ("memory-safe") {
-            if iszero(eq(caller(), sload(0x00))) { revert(codesize(), codesize()) }
-            sstore(0x00, calldataload(0x00)) // `feeToSetter`.
-            sstore(0x20, calldataload(0x20)) // `feeTo`.
+            if iszero(calldatasize()) { return(calldatasize(), calldatasize()) }
+            let o := 0
+            let f := not(3) // For negating the first 4 bytes.
+            for { let i := 0 } lt(i, calldatasize()) {} {
+                let c := byte(0, xor(add(i, f), calldataload(i)))
+                i := add(i, 1)
+                if iszero(c) {
+                    let d := byte(0, xor(add(i, f), calldataload(i)))
+                    i := add(i, 1)
+                    // Fill with either 0xff or 0x00.
+                    mstore(o, not(0))
+                    if iszero(gt(d, 0x7f)) { calldatacopy(o, calldatasize(), add(d, 1)) }
+                    o := add(o, add(and(d, 0x7f), 1))
+                    continue
+                }
+                mstore8(o, c)
+                o := add(o, 1)
+            }
+            let success := delegatecall(gas(), address(), 0x00, o, codesize(), 0x00)
+            returndatacopy(0x00, 0x00, returndatasize())
+            if iszero(success) { revert(0x00, returndatasize()) }
+            return(0x00, returndatasize())
         }
     }
 }
