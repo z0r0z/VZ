@@ -77,8 +77,38 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Helper function to compute poolId from PoolKey.
-    function computePoolId(PoolKey memory key) internal pure returns (uint256) {
+    /*function computePoolId(PoolKey memory key) internal pure returns (uint256) {
         return uint256(keccak256(abi.encode(key.token0, key.id0, key.token1, key.id1, key.swapFee)));
+    }*/
+
+    // @dev Returns the hash of the PoolKey for identifying a pool
+    function computePoolId(PoolKey memory key) internal pure returns (uint256 poolId) {
+        assembly ("memory-safe") {
+            // Allocate memory for our custom encoding
+            let ptr := mload(0x40) // Get free memory pointer
+
+            // Store each field in the order you want to hash them
+            // token0 (from offset 0x40 in the struct)
+            mstore(ptr, mload(add(key, 0x40)))
+
+            // id0 (from offset 0x00 in the struct)
+            mstore(add(ptr, 0x20), mload(key))
+
+            // token1 (from offset 0x60 in the struct)
+            mstore(add(ptr, 0x40), mload(add(key, 0x60)))
+
+            // id1 (from offset 0x20 in the struct)
+            mstore(add(ptr, 0x60), mload(add(key, 0x20)))
+
+            // swapFee (from offset 0x80 in the struct)
+            mstore(add(ptr, 0x80), mload(add(key, 0x80)))
+
+            // Hash the encoded data (5 slots of 32 bytes each = 160 bytes = 0xA0)
+            poolId := keccak256(ptr, 0xA0)
+
+            // Update the free memory pointer
+            mstore(0x40, add(ptr, 0xA0))
+        }
     }
 
     /// @dev Helper function to log transient balances into pool and accumulate.
@@ -257,7 +287,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function mint(PoolKey calldata poolKey, address to)
+    function mint(PoolKey memory poolKey, address to)
         public
         payable
         lock
