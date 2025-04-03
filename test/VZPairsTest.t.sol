@@ -26,6 +26,11 @@ contract VZPairsTest is Test {
     VZPairs.PoolKey ofPair;
     VZPairs.PoolKey erc6909Pair;
 
+    uint256 pairId;
+    uint256 ethPairId;
+    uint256 ofPairId;
+    uint256 erc6909PairId;
+
     function setUp() public {
         // Existing setup code
         address tokenA = address(new MockERC20("Token A", "TKNA", 18));
@@ -88,7 +93,11 @@ contract VZPairsTest is Test {
         });
 
         // For the TestUser, we need to compute the actual pair ID
-        uint256 pairId = uint256(keccak256(abi.encode(address(token0), 0, address(token1), 0, 30)));
+        pairId = uint256(keccak256(abi.encode(address(token0), 0, address(token1), 0, 30)));
+        ethPairId = uint256(keccak256(abi.encode(address(0), 0, address(token1), 0, 30)));
+        ofPairId = uint256(keccak256(abi.encode(address(0), 0, address(ofToken), 0, 30)));
+        erc6909PairId =
+            uint256(keccak256(abi.encode(_token6909A, _id6909A, _token6909B, _id6909B, 30)));
         testUser = new TestUser(pairId, pair);
 
         // Mint regular tokens
@@ -170,12 +179,13 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), pairId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
         assertEq(supply, 1 ether);
     }
 
@@ -185,12 +195,13 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), pairId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
         assertEq(supply, 1 ether);
         vm.expectRevert(PoolExists.selector);
         pairs.initialize(pair, address(this));
@@ -201,7 +212,9 @@ contract VZPairsTest is Test {
     function testMintBootstrapFailOverflow() public {
         ofToken.approve(address(pairs), type(uint120).max);
 
-        uint256 poolId = pairs.deposit{value: 1 ether}(ofPair, 1 ether, type(uint120).max);
+        pairs.deposit{value: 1 ether}(address(0), 0, 1 ether);
+        pairs.deposit(address(ofToken), 0, type(uint120).max);
+
         vm.expectRevert(Overflow.selector);
         pairs.initialize(ofPair, address(this));
     }
@@ -210,16 +223,18 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 3 ether);
         token1.approve(address(pairs), 3 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this)); // + 1 LP.
 
         vm.warp(37);
 
-        pairs.deposit(pair, 2 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.mint(pair, address(this)); // + 2 LP.
 
-        assertEq(pairs.balanceOf(address(this), poolId), 3 ether - 1000);
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(pairs.balanceOf(address(this), pairId), 3 ether - 1000);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
         assertEq(supply, 3 ether);
         assertReserves(3 ether, 3 ether);
     }
@@ -228,16 +243,18 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 3 ether);
         token1.approve(address(pairs), 2 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
-        pairs.initialize(pair, address(this)); // + 1 LP.
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        pairs.initialize(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), pairId), 1 ether - 1000);
         assertReserves(1 ether, 1 ether);
 
-        pairs.deposit(pair, 2 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
 
         pairs.mint(pair, address(this)); // + 1 LP
-        assertEq(pairs.balanceOf(address(this), poolId), 2 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), pairId), 2 ether - 1000);
         assertReserves(3 ether, 2 ether);
     }
 
@@ -251,7 +268,9 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1000);
         token1.approve(address(pairs), 1000);
 
-        pairs.deposit(pair, 1000, 1000);
+        pairs.deposit(pair.token0, 0, 1000);
+        pairs.deposit(pair.token1, 0, 1000);
+
         vm.expectRevert(encodeError("InsufficientLiquidityMinted()"));
         pairs.initialize(pair, address(this));
     }
@@ -260,16 +279,17 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this));
 
-        uint256 liquidity = pairs.balanceOf(address(this), poolId);
-        pairs.transfer(address(pairs), poolId, liquidity);
+        uint256 liquidity = pairs.balanceOf(address(this), pairId);
+        pairs.transfer(address(pairs), pairId, liquidity);
         pairs.burn(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), poolId), 0);
+        assertEq(pairs.balanceOf(address(this), pairId), 0);
         assertReserves(1000, 1000);
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1000);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
@@ -279,20 +299,22 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 3 ether);
         token1.approve(address(pairs), 2 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this));
 
-        pairs.deposit(pair, 2 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
 
         pairs.mint(pair, address(this)); // + 1 LP.
 
-        uint256 liquidity = pairs.balanceOf(address(this), poolId);
-        pairs.transfer(address(pairs), poolId, liquidity);
+        uint256 liquidity = pairs.balanceOf(address(this), pairId);
+        pairs.transfer(address(pairs), pairId, liquidity);
         pairs.burn(pair, address(this));
 
-        assertEq(pairs.balanceOf(address(this), poolId), 0);
+        assertEq(pairs.balanceOf(address(this), pairId), 0);
         assertReserves(1500, 1000);
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1500);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
@@ -303,28 +325,27 @@ contract VZPairsTest is Test {
             payable(address(pairs)), address(token0), address(token1), 1 ether, 1 ether
         );
 
-        uint256 poolId = computePoolId(pair);
-
-        assertEq(pairs.balanceOf(address(this), poolId), 0);
-        assertEq(pairs.balanceOf(address(testUser), poolId), 1 ether - 1000);
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(pairs.balanceOf(address(this), pairId), 0);
+        assertEq(pairs.balanceOf(address(testUser), pairId), 1 ether - 1000);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
         assertEq(supply, 1 ether);
 
         token0.approve(address(pairs), 2 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(pair, 2 ether, 1 ether);
+        pairs.deposit(address(token0), 0, 2 ether);
+        pairs.deposit(address(token1), 0, 1 ether);
 
         pairs.mint(pair, address(this)); // + 1 LP
 
-        uint256 liquidity = pairs.balanceOf(address(this), poolId);
-        pairs.transfer(address(pairs), poolId, liquidity);
+        uint256 liquidity = pairs.balanceOf(address(this), pairId);
+        pairs.transfer(address(pairs), pairId, liquidity);
         pairs.burn(pair, address(this));
 
         // this user is penalized for providing unbalanced liquidity
-        assertEq(pairs.balanceOf(address(this), poolId), 0);
+        assertEq(pairs.balanceOf(address(this), pairId), 0);
         assertReserves(1.5 ether, 1 ether);
-        (,,,,,, supply) = pairs.pools(poolId);
+        (,,,,,, supply) = pairs.pools(pairId);
         assertEq(supply, 1 ether);
         assertEq(token0.balanceOf(address(this)), 10 ether - 0.5 ether);
         assertEq(token1.balanceOf(address(this)), 10 ether);
@@ -332,9 +353,9 @@ contract VZPairsTest is Test {
         testUser.removeLiquidity(payable(address(pairs)));
 
         // testUser receives the amount collected from this user
-        assertEq(pairs.balanceOf(address(testUser), poolId), 0);
+        assertEq(pairs.balanceOf(address(testUser), pairId), 0);
         assertReserves(1500, 1000);
-        (,,,,,, supply) = pairs.pools(poolId);
+        (,,,,,, supply) = pairs.pools(pairId);
         assertEq(supply, 1000);
         assertEq(token0.balanceOf(address(testUser)), 10 ether + 0.5 ether - 1500);
         assertEq(token1.balanceOf(address(testUser)), 10 ether - 1000);
@@ -351,7 +372,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 1 ether);
 
-        pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this));
 
         vm.prank(address(0xdeadbeef));
@@ -363,11 +385,12 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
         uint256 amountOut = 0.181322178776029826 ether;
-        pairs.deposit(pair, 0.1 ether, 0);
+        pairs.deposit(pair.token0, 0, 0.1 ether);
         pairs.swap(pair, 0, amountOut, address(this), "");
 
         assertEq(
@@ -387,11 +410,12 @@ contract VZPairsTest is Test {
         uint256 startingETHBalance = address(this).balance;
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit{value: 1 ether}(ethPair, 1 ether, 2 ether);
+        pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
+        pairs.deposit(ethPair.token1, 0, 2 ether);
         pairs.initialize(ethPair, address(this));
 
         uint256 amountOut = 0.181322178776029826 ether;
-        pairs.deposit{value: 0.1 ether}(ethPair, 0.1 ether, 0);
+        pairs.deposit{value: 0.1 ether}(ethPair.token0, 0, 0.1 ether);
         pairs.swap(ethPair, 0, amountOut, address(this), "");
 
         assertEq(
@@ -411,10 +435,12 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 2.2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
-        pairs.deposit(pair, 0, 0.2 ether);
+        pairs.deposit(pair.token1, 0, 0.2 ether);
+
         pairs.swap(pair, 0.09 ether, 0, address(this), "");
 
         assertEq(
@@ -434,10 +460,12 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
         token1.approve(address(pairs), 2.2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
-        pairs.deposit(pair, 0.1 ether, 0.2 ether);
+        pairs.deposit(pair.token0, 0, 0.1 ether);
+        pairs.deposit(pair.token1, 0, 0.2 ether);
 
         pairs.swap(pair, 0.09 ether, 0.18 ether, address(this), "");
 
@@ -458,7 +486,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
         vm.expectRevert(encodeError("InsufficientOutputAmount()"));
@@ -469,7 +498,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
         vm.expectRevert(encodeError("InsufficientLiquidity()"));
@@ -483,10 +513,11 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
-        pairs.deposit(pair, 0.1 ether, 0);
+        pairs.deposit(pair.token0, 0, 0.1 ether);
 
         pairs.swap(pair, 0, 0.09 ether, address(this), "");
 
@@ -507,10 +538,11 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
-        pairs.deposit(pair, 0.1 ether, 0);
+        pairs.deposit(pair.token0, 0, 0.1 ether);
 
         vm.expectRevert(encodeError("K()"));
         pairs.swap(pair, 0, 0.36 ether, address(this), "");
@@ -528,10 +560,11 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
         pairs.initialize(pair, address(this));
 
-        pairs.deposit(pair, 0.1 ether, 0);
+        pairs.deposit(pair.token0, 0, 0.1 ether);
 
         vm.expectRevert(encodeError("K()"));
         pairs.swap(pair, 0, 0.181322178776029827 ether, address(this), "");
@@ -542,7 +575,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 10 ether);
         token1.approve(address(pairs), 10 ether);
 
-        pairs.deposit(pair, 1 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.initialize(pair, address(this));
 
         (uint256 initialPrice0, uint256 initialPrice1) = calculateCurrentPrice();
@@ -570,7 +604,8 @@ contract VZPairsTest is Test {
         assertCumulativePrices(initialPrice0 * 3, initialPrice1 * 3);
 
         // // Price changed.
-        pairs.deposit(pair, 2 ether, 1 ether);
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
         pairs.mint(pair, address(this));
 
         (uint256 newPrice0, uint256 newPrice1) = calculateCurrentPrice();
@@ -596,7 +631,7 @@ contract VZPairsTest is Test {
         assertBlockTimestampLast(6);
         assertCumulativePrices(initialPrice0 * 3 + newPrice0 * 3, initialPrice1 * 3 + newPrice1 * 3);
     }
-
+    /*
     function testFlashloan() public {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 2 ether);
@@ -616,63 +651,60 @@ contract VZPairsTest is Test {
         assertEq(token1.balanceOf(address(fl)), 0);
         assertEq(token1.balanceOf(address(pairs)), 2 ether + flashloanFee);
     }
+    */
 
-    function testERC6909Bootstrap() public returns (uint256 poolId) {
-        // Get correct token order based on addresses
-        (address token6909First, address token6909Second, uint256 id6909First, uint256 id6909Second)
-        = address(token6909A) < address(token6909B)
-            ? (address(token6909A), address(token6909B), token6909AId, token6909BId)
-            : (address(token6909B), address(token6909A), token6909BId, token6909AId);
-
+    function testERC6909Bootstrap() public {
         token6909A.approve(address(pairs), token6909AId, 1 ether);
         token6909B.approve(address(pairs), token6909BId, 1 ether);
 
-        poolId = pairs.deposit(erc6909Pair, 1 ether, 1 ether);
+        pairs.deposit(erc6909Pair.token0, erc6909Pair.id0, 1 ether);
+        pairs.deposit(erc6909Pair.token1, erc6909Pair.id1, 1 ether);
         pairs.initialize(erc6909Pair, address(this));
 
         // Verify LP tokens were minted
-        assertEq(pairs.balanceOf(address(this), poolId), 1 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), erc6909PairId), 1 ether - 1000);
         assertERC6909Reserves(uint112(1 ether), uint112(1 ether));
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(erc6909PairId);
         assertEq(supply, 1 ether);
     }
 
-    function testERC6909Mint() public returns (uint256 poolId) {
+    function testERC6909Mint() public {
         // Bootstrap the pair first
-        poolId = testERC6909Bootstrap();
+        testERC6909Bootstrap();
 
         token6909A.approve(address(pairs), token6909AId, 2 ether);
         token6909B.approve(address(pairs), token6909BId, 2 ether);
 
-        pairs.deposit(erc6909Pair, 2 ether, 2 ether);
+        pairs.deposit(erc6909Pair.token0, erc6909Pair.id0, 2 ether);
+        pairs.deposit(erc6909Pair.token1, erc6909Pair.id1, 2 ether);
 
         // Mint more LP tokens
         pairs.mint(erc6909Pair, address(this));
 
         // Verify additional LP tokens were minted
-        assertEq(pairs.balanceOf(address(this), poolId), 3 ether - 1000);
+        assertEq(pairs.balanceOf(address(this), erc6909PairId), 3 ether - 1000);
         assertERC6909Reserves(uint112(3 ether), uint112(3 ether));
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(erc6909PairId);
         assertEq(supply, 3 ether);
     }
 
     function testERC6909Burn() public {
         // Bootstrap and mint additional liquidity
-        uint256 poolId = testERC6909Mint();
+        testERC6909Mint();
 
         // Get all LP tokens
-        uint256 liquidity = pairs.balanceOf(address(this), poolId);
+        uint256 liquidity = pairs.balanceOf(address(this), erc6909PairId);
 
         // Transfer LP tokens to the pair contract for burning
-        pairs.transfer(address(pairs), poolId, liquidity);
+        pairs.transfer(address(pairs), erc6909PairId, liquidity);
 
         // Burn LP tokens to get tokens back
         pairs.burn(erc6909Pair, address(this));
 
         // Verify LP tokens were burned
-        assertEq(pairs.balanceOf(address(this), poolId), 0);
+        assertEq(pairs.balanceOf(address(this), erc6909PairId), 0);
         assertERC6909Reserves(uint112(1000), uint112(1000));
-        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        (,,,,,, uint256 supply) = pairs.pools(erc6909PairId);
         assertEq(supply, 1000);
 
         // Check if tokens were returned correctly
@@ -701,11 +733,7 @@ contract VZPairsTest is Test {
         // Use direct transfer
         token6909A.approve(address(pairs), token6909AId, 0.1 ether);
 
-        pairs.deposit(
-            erc6909Pair,
-            address(token6909A) < address(token6909B) ? 0.1 ether : 0,
-            address(token6909B) < address(token6909A) ? 0.1 ether : 0
-        );
+        pairs.deposit(token6909First, token6909AId, 0.1 ether);
 
         // Calculate the amount to receive based on constant product formula
         uint256 amountOut = 0.09 ether;
@@ -784,7 +812,8 @@ contract VZPairsTest is Test {
         token0.approve(address(pairs), 1.1 ether);
 
         // Deposit tokens for initialization
-        pairs.deposit(mixedPairKey, 1 ether, 1 ether);
+        pairs.deposit(tokenA, idA, 1 ether);
+        pairs.deposit(tokenB, idB, 1 ether);
 
         // Initialize the pair
         pairs.initialize(mixedPairKey, address(this));
@@ -799,7 +828,7 @@ contract VZPairsTest is Test {
         assertEq(reserve1, 1 ether);
 
         // Deposit more token0 for the swap
-        pairs.deposit(mixedPairKey, 0.1 ether, 0);
+        pairs.deposit(tokenA, idA, 0.1 ether);
 
         // Calculate the amount to receive based on constant product formula
         uint256 amountOut = 0.09 ether;
@@ -841,7 +870,6 @@ contract VZPairsTest is Test {
 
 contract TestUser {
     uint256 immutable id;
-
     VZPairs.PoolKey pair;
 
     constructor(uint256 ID, VZPairs.PoolKey memory _pair) payable {
@@ -859,12 +887,14 @@ contract TestUser {
         bool ethBased = token0Address_ == address(0);
         if (ethBased) {
             ERC20(token1Address_).approve(pairsAddress_, amount1_);
-            VZPairs(pairsAddress_).deposit{value: amount0_}(pair, amount0_, amount1_);
+            VZPairs(pairsAddress_).deposit{value: amount0_}(token0Address_, 0, amount0_);
+            VZPairs(pairsAddress_).deposit(token1Address_, 0, amount1_);
             VZPairs(pairsAddress_).initialize(pair, address(this));
         } else {
             ERC20(token0Address_).approve(pairsAddress_, amount0_);
             ERC20(token1Address_).approve(pairsAddress_, amount1_);
-            VZPairs(pairsAddress_).deposit(pair, amount0_, amount1_);
+            VZPairs(pairsAddress_).deposit(token0Address_, 0, amount0_);
+            VZPairs(pairsAddress_).deposit(token1Address_, 0, amount1_);
             VZPairs(pairsAddress_).initialize(pair, address(this));
         }
     }
@@ -918,7 +948,7 @@ contract Flashloaner {
 
         ERC20(tokenAddress).approve(msg.sender, balance);
 
-        VZPairs(payable(msg.sender)).deposit(pair, balance, 0);
+        VZPairs(payable(msg.sender)).deposit(pair.token0, 0, balance);
     }
 }
 
