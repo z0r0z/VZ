@@ -330,6 +330,7 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
+        _clear(poolId);
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
 
@@ -360,22 +361,10 @@ contract VZPairs is VZERC6909 {
 
         // Optimistically transfer tokens. If `to` is `this`, tstore.
         if (amount0Out > 0) {
-            if (to == address(this)) {
-                assembly ("memory-safe") {
-                    tstore(poolId, add(tload(poolId), amount0Out))
-                }
-            } else {
-                _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
-            }
+            _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
         }
         if (amount1Out > 0) {
-            if (to == address(this)) {
-                assembly ("memory-safe") {
-                    tstore(add(poolId, 1), add(tload(add(poolId, 1)), amount1Out))
-                }
-            } else {
-                _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
-            }
+            _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
         }
         if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
 
@@ -397,6 +386,7 @@ contract VZPairs is VZERC6909 {
         );
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
+        _clear(poolId);
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
@@ -413,7 +403,9 @@ contract VZPairs is VZERC6909 {
     function sync(PoolKey calldata poolKey) public lock {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
-        (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
+        (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
+        uint256 balance0 = pool.reserve0 + deposit0;
+        uint256 balance1 = pool.reserve1 + deposit1;
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
     }
 
