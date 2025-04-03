@@ -212,9 +212,12 @@ contract VZPairs is VZERC6909 {
         payable
         returns (uint256 poolId)
     {
-        // Enforce token ordering when at least one token is ETH/ERC20 (id == 0).
         require(
-            poolKey.id0 > 0 && poolKey.id1 > 0 ? true : poolKey.token0 < poolKey.token1,
+            (poolKey.token0 < poolKey.token1)
+            || (
+                poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
+                    && poolKey.id0 != poolKey.id1
+            ),
             InvalidPoolTokens()
         );
         poolId = _computePoolId(poolKey);
@@ -236,9 +239,12 @@ contract VZPairs is VZERC6909 {
         lock
         returns (uint256 poolId, uint256 liquidity)
     {
-        // Enforce token ordering when at least one token is ETH/ERC20 (id == 0).
         require(
-            poolKey.id0 > 0 && poolKey.id1 > 0 ? true : poolKey.token0 < poolKey.token1,
+            (poolKey.token0 < poolKey.token1)
+            || (
+                poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
+                    && poolKey.id0 != poolKey.id1
+            ),
             InvalidPoolTokens()
         );
         require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
