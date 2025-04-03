@@ -195,7 +195,7 @@ contract VZPairs is VZERC6909 {
 
     error MulticallFail();
 
-    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results) {
+    function multicall(bytes[] calldata data) public payable returns (bytes[] memory results) {
         results = new bytes[](data.length);
         for (uint256 i; i != data.length; ++i) {
             (bool success, bytes memory result) = address(this).delegatecall(data[i]);
@@ -210,14 +210,15 @@ contract VZPairs is VZERC6909 {
     function deposit(PoolKey calldata poolKey, uint256 amount0, uint256 amount1)
         public
         payable
+        lock
         returns (uint256 poolId)
     {
         require(
             (poolKey.token0 < poolKey.token1)
-            || (
-                poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
-                    && poolKey.id0 != poolKey.id1
-            ),
+                || (
+                    poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
+                        && poolKey.id0 != poolKey.id1
+                ),
             InvalidPoolTokens()
         );
         poolId = _computePoolId(poolKey);
@@ -235,16 +236,15 @@ contract VZPairs is VZERC6909 {
     /// @dev Create a new pair pool and mint initial liquidity tokens for `to`.
     function initialize(PoolKey calldata poolKey, address to)
         public
-        payable
         lock
         returns (uint256 poolId, uint256 liquidity)
     {
         require(
             (poolKey.token0 < poolKey.token1)
-            || (
-                poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
-                    && poolKey.id0 != poolKey.id1
-            ),
+                || (
+                    poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
+                        && poolKey.id0 != poolKey.id1
+                ),
             InvalidPoolTokens()
         );
         require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
@@ -271,12 +271,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev This low-level function should be called from a contract which performs important safety checks.
-    function mint(PoolKey calldata poolKey, address to)
-        public
-        payable
-        lock
-        returns (uint256 liquidity)
-    {
+    function mint(PoolKey calldata poolKey, address to) public lock returns (uint256 liquidity) {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
@@ -303,7 +298,6 @@ contract VZPairs is VZERC6909 {
     /// @dev This low-level function should be called from a contract which performs important safety checks.
     function burn(PoolKey calldata poolKey, address to)
         public
-        payable
         lock
         returns (uint256 amount0, uint256 amount1)
     {
@@ -352,7 +346,7 @@ contract VZPairs is VZERC6909 {
         uint256 amount1Out,
         address to,
         bytes calldata data
-    ) public payable lock {
+    ) public lock {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
@@ -407,7 +401,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Force balances to match reserves.
-    function skim(PoolKey calldata poolKey, address to) public payable lock {
+    function skim(PoolKey calldata poolKey, address to) public lock {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
@@ -416,7 +410,7 @@ contract VZPairs is VZERC6909 {
     }
 
     /// @dev Force reserves to match balances.
-    function sync(PoolKey calldata poolKey) public payable lock {
+    function sync(PoolKey calldata poolKey) public lock {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         (uint256 balance0, uint256 balance1) = _getDeposits(poolId);
@@ -446,9 +440,6 @@ contract VZPairs is VZERC6909 {
             sstore(0x00, feeToSetter)
         }
     }
-
-    /// @dev Native token fallback.
-    receive() external payable {}
 
     /// @dev Calldata compression (https://github.com/Vectorized/solady/blob/main/src/utils/LibZip).
     fallback() external payable {
