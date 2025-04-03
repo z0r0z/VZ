@@ -46,15 +46,15 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    /// @dev Helper function to compute poolId from PoolKey.
-    function _computePoolId(PoolKey memory key) internal pure returns (uint256 poolId) {
+    /// @dev Helper function to compute `poolId` from `poolKey`.
+    function _computePoolId(PoolKey memory poolKey) internal pure returns (uint256 poolId) {
         assembly ("memory-safe") {
             let m := mload(0x40)
-            mstore(m, mload(add(key, 0x40))) // `token0`.
-            mstore(add(m, 0x20), mload(key)) // `id0`.
-            mstore(add(m, 0x40), mload(add(key, 0x60))) // `token1`.
-            mstore(add(m, 0x60), mload(add(key, 0x20))) // `id1`.
-            mstore(add(m, 0x80), mload(add(key, 0x80))) // `swapFee`.
+            mstore(m, mload(add(poolKey, 0x40))) // `token0`.
+            mstore(add(m, 0x20), mload(poolKey)) // `id0`.
+            mstore(add(m, 0x40), mload(add(poolKey, 0x60))) // `token1`.
+            mstore(add(m, 0x60), mload(add(poolKey, 0x20))) // `id1`.
+            mstore(add(m, 0x80), mload(add(poolKey, 0x80))) // `swapFee`.
             poolId := keccak256(m, 0xa0)
         }
     }
@@ -64,14 +64,6 @@ contract VZPairs is VZERC6909 {
         assembly ("memory-safe") {
             if amount0 { tstore(poolId, add(tload(poolId), amount0)) }
             if amount1 { tstore(add(poolId, 1), add(tload(add(poolId, 1)), amount1)) }
-        }
-    }
-
-    /// @dev Helper function to clear transient balances from pool after op.
-    function _clear(uint256 poolId) internal {
-        assembly ("memory-safe") {
-            tstore(poolId, 0)
-            tstore(add(poolId, 1), 0)
         }
     }
 
@@ -87,9 +79,16 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    /// @dev Helper function to clear transient balances from pool after op.
+    function _clear(uint256 poolId) internal {
+        assembly ("memory-safe") {
+            tstore(poolId, 0)
+            tstore(add(poolId, 1), 0)
+        }
+    }
+
     /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases.
     function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
-        if (to == address(this)) return;
         if (token == address(0)) {
             safeTransferETH(to, amount);
         } else if (id == 0) {
@@ -359,9 +358,25 @@ contract VZPairs is VZERC6909 {
         require(to != poolKey.token0, InvalidTo());
         require(to != poolKey.token1, InvalidTo());
 
-        // Optimistically transfer tokens.
-        if (amount0Out > 0) _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
-        if (amount1Out > 0) _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
+        // Optimistically transfer tokens. If `to` is `this`, tstore.
+        if (amount0Out > 0) {
+            if (to == address(this)) {
+                assembly ("memory-safe") {
+                    tstore(poolId, add(tload(poolId), amount0Out))
+                }
+            } else {
+                _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
+            }
+        }
+        if (amount1Out > 0) {
+            if (to == address(this)) {
+                assembly ("memory-safe") {
+                    tstore(add(poolId, 1), add(tload(add(poolId, 1)), amount1Out))
+                }
+            } else {
+                _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
+            }
+        }
         if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
 
         (uint256 deposit0, uint256 deposit1) = _getDeposits(poolId);
