@@ -866,6 +866,130 @@ contract VZPairsTest is Test {
         assertEq(reserve0, 1 ether + 0.1 ether, "unexpected reserve0 after swap");
         assertEq(reserve1, 1 ether - amountOut, "unexpected reserve1 after swap");
     }
+
+    function testMultiHopSwap() public {
+        // Setup
+        token0.approve(address(pairs), 10 ether);
+        token1.approve(address(pairs), 10 ether);
+
+        // Create pair0 (token0/token1)
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
+        pairs.initialize(pair, address(this));
+
+        // Create a second token for the next hop
+        MockERC20 token2 = new MockERC20("Token C", "TKNC", 18);
+        token2.mint(address(this), 10 ether);
+        token2.approve(address(pairs), 10 ether);
+
+        // Create pair1 (token1/token2) - ensure token addresses are ordered correctly
+        address tokenA;
+        address tokenB;
+        if (address(token1) < address(token2)) {
+            tokenA = address(token1);
+            tokenB = address(token2);
+        } else {
+            tokenA = address(token2);
+            tokenB = address(token1);
+        }
+
+        VZPairs.PoolKey memory pair1 =
+            VZPairs.PoolKey({token0: tokenA, id0: 0, token1: tokenB, id1: 0, swapFee: 30});
+
+        // Initialize pair1
+        pairs.deposit(tokenA, 0, 2 ether);
+        pairs.deposit(tokenB, 0, 2 ether);
+        pairs.initialize(pair1, address(this));
+
+        // Track initial balances - IMPORTANT: take balances AFTER creating the pairs
+        uint256 initialToken0Balance = token0.balanceOf(address(this));
+        uint256 initialToken1Balance = token1.balanceOf(address(this));
+        uint256 initialToken2Balance = token2.balanceOf(address(this));
+
+        // Execute multihop swap: token0 -> token1 -> token2
+        // First swap: token0 -> token1 (using pair)
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.swap(pair, 0, 0.5 ether, address(this), "");
+
+        // Second swap: token1 -> token2 (using pair1)
+        token1.approve(address(pairs), 0.5 ether);
+        pairs.deposit(address(token1), 0, 0.5 ether);
+
+        // Determine which token is which in the second pair
+        uint256 amountOut;
+        if (address(token1) == tokenA) {
+            amountOut = 0.25 ether; // Amount of token2 to receive
+            pairs.swap(pair1, 0, amountOut, address(this), "");
+        } else {
+            amountOut = 0.25 ether; // Amount of token2 to receive
+            pairs.swap(pair1, amountOut, 0, address(this), "");
+        }
+
+        // Verify final balances
+        assertEq(token0.balanceOf(address(this)), initialToken0Balance - 1 ether);
+
+        // For token1, the balance accounting is:
+        // initialToken1Balance + 0.5 ether (from first swap) - 0.5 ether (deposited for second swap)
+        // = initialToken1Balance
+        assertEq(token1.balanceOf(address(this)), initialToken1Balance);
+
+        assertEq(token2.balanceOf(address(this)), initialToken2Balance + amountOut);
+    }
+
+    function testProtocolFeeCollection() public {
+        // Set fee receiver (must use prank to simulate being the feeToSetter from constructor)
+        address feeReceiver = address(0xFEE);
+        vm.prank(address(1)); // This is the feeToSetter from constructor
+        pairs.setFeeTo(feeReceiver);
+
+        token0.approve(address(pairs), 10 ether);
+        token1.approve(address(pairs), 10 ether);
+
+        // Initialize pair
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        pairs.initialize(pair, address(this));
+
+        // Add liquidity to generate fees
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
+        pairs.mint(pair, address(this));
+
+        // Make swaps to generate fees - use more reasonable amounts
+        pairs.deposit(pair.token0, 0, 0.1 ether);
+        // Calculate a valid amount that respects the constant product formula
+        // For a 0.1 ETH input with 3 ETH reserves on both sides and 0.3% fee:
+        // The maximum output would be approximately 0.09 ETH
+        pairs.swap(pair, 0, 0.09 ether, address(this), "");
+
+        pairs.deposit(pair.token1, 0, 0.1 ether);
+        pairs.swap(pair, 0.09 ether, 0, address(this), "");
+
+        // Record the current LP token balance
+        uint256 myLpTokensBefore = pairs.balanceOf(address(this), pairId);
+
+        // Add liquidity again to trigger fee mint
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        pairs.mint(pair, address(this));
+
+        // Check that fee receiver got LP tokens
+        uint256 feeReceiverBalance = pairs.balanceOf(feeReceiver, pairId);
+        assertTrue(feeReceiverBalance > 0, "Fee receiver should have LP tokens");
+
+        // Also verify that our balance increased as expected
+        uint256 myLpTokensAfter = pairs.balanceOf(address(this), pairId);
+        // Should be approximately 1 ETH of LP tokens, but less than exactly 1 ETH
+        // because some went to the fee receiver
+        assertGt(myLpTokensAfter, myLpTokensBefore);
+        assertLt(myLpTokensAfter - myLpTokensBefore, 1 ether);
+
+        // Print out values to debug
+        console.log("Fee receiver LP balance:", feeReceiverBalance);
+        console.log("My LP tokens before:", myLpTokensBefore);
+        console.log("My LP tokens after:", myLpTokensAfter);
+        console.log("LP tokens added:", myLpTokensAfter - myLpTokensBefore);
+    }
 }
 
 contract TestUser {
