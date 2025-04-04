@@ -255,10 +255,9 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, 0, 0);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
-        if (to != address(this)) {
-            _clearWithKey(depositKey0);
-            _clearWithKey(depositKey1);
-        }
+        // Always clear tokens that were added to the pool.
+        if (balance0 > 0) _clearWithKey(depositKey0);
+        if (balance1 > 0) _clearWithKey(depositKey1);
         emit Mint(poolId, msg.sender, balance0, balance1);
     }
 
@@ -286,10 +285,9 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
-        if (to != address(this)) {
-            _clearWithKey(depositKey0);
-            _clearWithKey(depositKey1);
-        }
+        // Always clear deposit keys for tokens that were added to the pool.
+        if (deposit0 > 0) _clearWithKey(depositKey0);
+        if (deposit1 > 0) _clearWithKey(depositKey1);
         emit Mint(poolId, msg.sender, deposit0, deposit1);
     }
 
@@ -336,8 +334,8 @@ contract VZPairs is VZERC6909 {
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
         if (to != address(this)) {
-            _clearWithKey(depositKey0);
-            _clearWithKey(depositKey1);
+            if (amount0 > 0) _clearWithKey(depositKey0);
+            if (amount1 > 0) _clearWithKey(depositKey1);
         }
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
@@ -395,9 +393,14 @@ contract VZPairs is VZERC6909 {
         );
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
+        // Always clear input tokens that were consumed.
+        if (amount0In > 0) _clearWithKey(depositKey0);
+        if (amount1In > 0) _clearWithKey(depositKey1);
+
+        // Only clear output tokens if they weren't sent back to this contract.
         if (to != address(this)) {
-            _clearWithKey(depositKey0);
-            _clearWithKey(depositKey1);
+            if (amount0Out > 0) _clearWithKey(depositKey0);
+            if (amount1Out > 0) _clearWithKey(depositKey1);
         }
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
@@ -416,6 +419,10 @@ contract VZPairs is VZERC6909 {
         uint256 balance0 = pool.reserve0 + deposit0;
         uint256 balance1 = pool.reserve1 + deposit1;
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+
+        // Clear deposit keys for tokens that were added to the pool.
+        if (deposit0 > 0) _clearWithKey(depositKey0);
+        if (deposit1 > 0) _clearWithKey(depositKey1);
     }
 
     error Unauthorized();
