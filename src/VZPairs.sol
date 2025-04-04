@@ -1,6 +1,3 @@
-// Changes made to the deposit tracking functions to use keccak256
-// Only modified the relevant functions while keeping the rest of the contract intact
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
@@ -62,7 +59,7 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    /// @dev Helper function to compute deposit key from token and id
+    /// @dev Helper function to compute deposit key from `token` and `id`.
     function _computeDepositKey(address token, uint256 id)
         internal
         pure
@@ -76,30 +73,14 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    /// @dev Helper function to fetch transient balances during liquidity event.
-    function _getDeposit(address token, uint256 id) internal view returns (uint256 bal) {
-        uint256 depositKey = _computeDepositKey(token, id);
-        assembly ("memory-safe") {
-            bal := tload(depositKey)
-        }
-    }
-
-    /// @dev Helper function to fetch transient balances with precomputed key
+    /// @dev Helper function to fetch transient balances with precomputed key.
     function _getDepositWithKey(uint256 depositKey) internal view returns (uint256 bal) {
         assembly ("memory-safe") {
             bal := tload(depositKey)
         }
     }
 
-    /// @dev Helper function to clear transient balances from pool after op.
-    function _clear(address token, uint256 id) internal {
-        uint256 depositKey = _computeDepositKey(token, id);
-        assembly ("memory-safe") {
-            tstore(depositKey, 0)
-        }
-    }
-
-    /// @dev Helper function to clear transient balances with precomputed key
+    /// @dev Helper function to clear transient balances with precomputed key.
     function _clearWithKey(uint256 depositKey) internal {
         assembly ("memory-safe") {
             tstore(depositKey, 0)
@@ -108,12 +89,21 @@ contract VZPairs is VZERC6909 {
 
     /// @dev Helper function to transfer tokens considering ERC6909 and ETH cases.
     function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
-        if (token == address(0)) {
-            safeTransferETH(to, amount);
-        } else if (id == 0) {
-            safeTransfer(token, to, amount);
+        // If transferring to self, update transient storage instead.
+        if (to == address(this)) {
+            uint256 depositKey = _computeDepositKey(token, id);
+            uint256 currentAmount = _getDepositWithKey(depositKey);
+            assembly ("memory-safe") {
+                tstore(depositKey, add(currentAmount, amount))
+            }
         } else {
-            VZERC6909(token).transfer(to, id, amount);
+            if (token == address(0)) {
+                safeTransferETH(to, amount);
+            } else if (id == 0) {
+                safeTransfer(token, to, amount);
+            } else {
+                VZERC6909(token).transfer(to, id, amount);
+            }
         }
     }
 
@@ -214,7 +204,7 @@ contract VZPairs is VZERC6909 {
 
     error MulticallFail();
 
-    function multicall(bytes[] calldata data) public payable returns (bytes[] memory results) {
+    function multicall(bytes[] calldata data) public returns (bytes[] memory results) {
         results = new bytes[](data.length);
         for (uint256 i; i != data.length; ++i) {
             (bool success, bytes memory result) = address(this).delegatecall(data[i]);
@@ -258,7 +248,7 @@ contract VZPairs is VZERC6909 {
         Pool storage pool = pools[poolId];
         require(pool.supply == 0, PoolExists());
 
-        // Precompute deposit keys
+        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -276,8 +266,10 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, 0, 0);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
-        _clearWithKey(depositKey0);
-        _clearWithKey(depositKey1);
+        if (to != address(this)) {
+            _clearWithKey(depositKey0);
+            _clearWithKey(depositKey1);
+        }
         emit Mint(poolId, msg.sender, balance0, balance1);
     }
 
@@ -288,7 +280,7 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
 
-        // Precompute deposit keys
+        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -305,8 +297,10 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
-        _clearWithKey(depositKey0);
-        _clearWithKey(depositKey1);
+        if (to != address(this)) {
+            _clearWithKey(depositKey0);
+            _clearWithKey(depositKey1);
+        }
         emit Mint(poolId, msg.sender, deposit0, deposit1);
     }
 
@@ -323,7 +317,7 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
 
-        // Precompute deposit keys
+        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -352,8 +346,10 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
-        _clearWithKey(depositKey0);
-        _clearWithKey(depositKey1);
+        if (to != address(this)) {
+            _clearWithKey(depositKey0);
+            _clearWithKey(depositKey1);
+        }
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
 
@@ -383,15 +379,11 @@ contract VZPairs is VZERC6909 {
         require(to != poolKey.token1, InvalidTo());
 
         // Optimistically transfer tokens. If `to` is `this`, tstore.
-        if (amount0Out > 0) {
-            _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
-        }
-        if (amount1Out > 0) {
-            _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
-        }
+        if (amount0Out > 0) _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
+        if (amount1Out > 0) _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
         if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
 
-        // Precompute deposit keys
+        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -414,8 +406,10 @@ contract VZPairs is VZERC6909 {
         );
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
-        _clearWithKey(depositKey0);
-        _clearWithKey(depositKey1);
+        if (to != address(this)) {
+            _clearWithKey(depositKey0);
+            _clearWithKey(depositKey1);
+        }
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
@@ -424,7 +418,7 @@ contract VZPairs is VZERC6909 {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
 
-        // Precompute deposit keys
+        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -432,6 +426,10 @@ contract VZPairs is VZERC6909 {
         uint256 balance1 = _getDepositWithKey(depositKey1);
         _safeTransfer(poolKey.token0, to, poolKey.id0, balance0 - pool.reserve0);
         _safeTransfer(poolKey.token1, to, poolKey.id1, balance1 - pool.reserve1);
+        if (to != address(this)) {
+            _clearWithKey(depositKey0);
+            _clearWithKey(depositKey1);
+        }
     }
 
     /// @dev Force reserves to match balances.
@@ -439,7 +437,7 @@ contract VZPairs is VZERC6909 {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
 
-        // Precompute deposit keys
+        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
