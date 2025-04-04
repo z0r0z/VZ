@@ -1,3 +1,6 @@
+// Changes made to the deposit tracking functions to use keccak256
+// Only modified the relevant functions while keeping the rest of the contract intact
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
@@ -59,17 +62,33 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    /// @dev Helper function to compute deposit key from token and id
+    function _computeDepositKey(address token, uint256 id)
+        internal
+        pure
+        returns (uint256 depositKey)
+    {
+        assembly ("memory-safe") {
+            let m := mload(0x40)
+            mstore(m, token)
+            mstore(add(m, 0x20), id)
+            depositKey := keccak256(m, 0x40)
+        }
+    }
+
     /// @dev Helper function to fetch transient balances during liquidity event.
     function _getDeposit(address token, uint256 id) internal view returns (uint256 bal) {
+        uint256 depositKey = _computeDepositKey(token, id);
         assembly ("memory-safe") {
-            bal := tload(add(token, id))
+            bal := tload(depositKey)
         }
     }
 
     /// @dev Helper function to clear transient balances from pool after op.
     function _clear(address token, uint256 id) internal {
+        uint256 depositKey = _computeDepositKey(token, id);
         assembly ("memory-safe") {
-            tstore(add(token, id), 0)
+            tstore(depositKey, 0)
         }
     }
 
@@ -194,8 +213,9 @@ contract VZPairs is VZERC6909 {
     function deposit(address token, uint256 id, uint256 amount) public payable lock {
         if (token == address(0)) amount = msg.value;
         else _safeTransferFrom(token, msg.sender, id, amount);
+        uint256 depositKey = _computeDepositKey(token, id);
         assembly ("memory-safe") {
-            tstore(add(token, id), amount)
+            tstore(depositKey, amount)
         }
     }
 
