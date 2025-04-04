@@ -202,17 +202,6 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    error MulticallFail();
-
-    function multicall(bytes[] calldata data) public returns (bytes[] memory results) {
-        results = new bytes[](data.length);
-        for (uint256 i; i != data.length; ++i) {
-            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
-            require(success, MulticallFail());
-            results[i] = result;
-        }
-    }
-
     /// @dev Helper function to pull token balances into pool.
     function deposit(address token, uint256 id, uint256 amount) public payable lock {
         if (token == address(0)) amount = msg.value;
@@ -413,25 +402,6 @@ contract VZPairs is VZERC6909 {
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
-    /// @dev Force balances to match reserves.
-    function skim(PoolKey calldata poolKey, address to) public lock {
-        uint256 poolId = _computePoolId(poolKey);
-        Pool storage pool = pools[poolId];
-
-        // Precompute deposit keys.
-        uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
-        uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
-
-        uint256 balance0 = _getDepositWithKey(depositKey0);
-        uint256 balance1 = _getDepositWithKey(depositKey1);
-        _safeTransfer(poolKey.token0, to, poolKey.id0, balance0 - pool.reserve0);
-        _safeTransfer(poolKey.token1, to, poolKey.id1, balance1 - pool.reserve1);
-        if (to != address(this)) {
-            _clearWithKey(depositKey0);
-            _clearWithKey(depositKey1);
-        }
-    }
-
     /// @dev Force reserves to match balances.
     function sync(PoolKey calldata poolKey) public lock {
         uint256 poolId = _computePoolId(poolKey);
@@ -469,6 +439,17 @@ contract VZPairs is VZERC6909 {
                 revert(0x1c, 0x04)
             }
             sstore(0x00, feeToSetter)
+        }
+    }
+
+    error MulticallFail();
+
+    function multicall(bytes[] calldata data) public returns (bytes[] memory results) {
+        results = new bytes[](data.length);
+        for (uint256 i; i != data.length; ++i) {
+            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
+            require(success, MulticallFail());
+            results[i] = result;
         }
     }
 
