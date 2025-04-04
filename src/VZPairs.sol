@@ -206,9 +206,12 @@ contract VZPairs is VZERC6909 {
     function deposit(address token, uint256 id, uint256 amount) public payable lock {
         if (token == address(0)) amount = msg.value;
         else _safeTransferFrom(token, msg.sender, id, amount);
+
         uint256 depositKey = _computeDepositKey(token, id);
+        uint256 currentAmount = _getDepositWithKey(depositKey);
+
         assembly ("memory-safe") {
-            tstore(depositKey, amount)
+            tstore(depositKey, add(currentAmount, amount))
         }
     }
 
