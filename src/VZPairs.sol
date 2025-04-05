@@ -619,7 +619,88 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    // ** ROUTER VIEW
+    // ** ROUTER LIQ
+
+    error Expired();
+
+    function addLiquidity(
+        PoolKey calldata poolKey,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        address to,
+        uint256 deadline
+    ) public payable lock returns (uint256 amount0, uint256 amount1, uint256 liquidity) {
+        require(block.timestamp <= deadline, Expired());
+
+        uint256 poolId = _computePoolId(poolKey);
+        Pool storage pool = pools[poolId];
+        bool newPool = pool.supply == 0;
+
+        if (newPool) {
+            amount0 = amount0Desired;
+            amount1 = amount1Desired;
+        } else {
+            (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+            uint256 amount1Optimal = mulDiv(amount0Desired, reserve1, reserve0);
+
+            if (amount1Optimal <= amount1Desired) {
+                require(amount1Optimal >= amount1Min, InsufficientOutputAmount());
+                amount0 = amount0Desired;
+                amount1 = amount1Optimal;
+            } else {
+                uint256 amount0Optimal = mulDiv(amount1Desired, reserve0, reserve1);
+                require(amount0Optimal >= amount0Min, InsufficientOutputAmount());
+                amount0 = amount0Optimal;
+                amount1 = amount1Desired;
+            }
+        }
+
+        uint256 ethValue = msg.value;
+        bool isToken0ETH = poolKey.token0 == address(0);
+        bool isToken1ETH = poolKey.token1 == address(0);
+
+        if (isToken0ETH) {
+            require(ethValue >= amount0, InvalidMsgVal());
+            ethValue -= amount0;
+        } else {
+            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amount0);
+        }
+
+        if (isToken1ETH) {
+            require(ethValue >= amount1, InvalidMsgVal());
+            ethValue -= amount1;
+        } else {
+            _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amount1);
+        }
+
+        if (ethValue > 0) safeTransferETH(msg.sender, ethValue);
+
+        if (newPool) {
+            (, uint256 liq) = initialize(poolKey, to);
+            liquidity = liq;
+        } else {
+            liquidity = mint(poolKey, to);
+        }
+    }
+
+    function removeLiquidity(
+        PoolKey calldata poolKey,
+        uint256 liquidity,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        address to,
+        uint256 deadline
+    ) public lock returns (uint256 amount0, uint256 amount1) {
+        require(block.timestamp <= deadline, Expired());
+        transferFrom(msg.sender, address(this), _computePoolId(poolKey), liquidity);
+        (amount0, amount1) = burn(poolKey, to);
+        require(amount0 >= amount0Min, InsufficientOutputAmount());
+        require(amount1 >= amount1Min, InsufficientOutputAmount());
+    }
+
+    // ** ROUTER MATH
 
     /// @dev Calculate output amount for a given input amount.
     function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)

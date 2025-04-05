@@ -1149,6 +1149,241 @@ contract VZPairsTest is Test {
         );
     }
 
+    function testAddLiquidityBasic() public {
+        token0.approve(address(pairs), 1 ether);
+        token1.approve(address(pairs), 1 ether);
+
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(pair, address(this));
+
+        assertEq(liquidity, 1 ether - 1000, "unexpected liquidity");
+        assertReserves(1 ether, 1 ether);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, 1 ether);
+    }
+
+    function testAddLiquidityETHBasic() public {
+        uint256 startingETHBalance = address(this).balance;
+        token1.approve(address(pairs), 2 ether);
+
+        pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
+        pairs.deposit(ethPair.token1, 0, 2 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(ethPair, address(this));
+
+        // Calculate expected liquidity: sqrt(1e18 * 2e18) - 1000
+        // This equals sqrt(2) * 1e18 - 1000 ≈ 1.414213562373095048 * 1e18 - 1000
+        uint256 expectedLiquidity = 1414213562373095048 - 1000;
+        assertEq(liquidity, expectedLiquidity, "unexpected liquidity");
+
+        assertReservesETH(1 ether, 2 ether);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, expectedLiquidity + 1000);
+        assertEq(address(this).balance, startingETHBalance - 1 ether, "ETH not deducted correctly");
+    }
+
+    function testAddToExistingPool() public {
+        // First initialize the pair
+        token0.approve(address(pairs), 3 ether);
+        token1.approve(address(pairs), 3 ether);
+
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        pairs.initialize(pair, address(this));
+
+        // Now add more liquidity
+        pairs.deposit(pair.token0, 0, 2 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
+        uint256 liquidity = pairs.mint(pair, address(this));
+
+        assertEq(liquidity, 2 ether, "unexpected liquidity");
+        assertReserves(3 ether, 3 ether);
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
+        assertEq(supply, 3 ether);
+    }
+
+    function testAddUnbalancedLiquidity() public {
+        // First initialize the pair with 1:2 ratio
+        token0.approve(address(pairs), 5 ether);
+        token1.approve(address(pairs), 5 ether);
+
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
+        (uint256 poolId, uint256 initialLiquidity) = pairs.initialize(pair, address(this));
+
+        // Add more liquidity maintaining the ratio
+        pairs.deposit(pair.token0, 0, 1.5 ether);
+        pairs.deposit(pair.token1, 0, 3 ether);
+        uint256 liquidity = pairs.mint(pair, address(this));
+
+        // Assert that liquidity was minted
+        assertGt(liquidity, 0, "no liquidity minted");
+
+        // Check reserves are updated correctly
+        assertReserves(2.5 ether, 5 ether);
+
+        // Check pool state
+        (,,,,,, uint256 supply) = pairs.pools(pairId);
+        assertEq(supply, initialLiquidity + 1000 + liquidity);
+    }
+
+    function testRemoveLiquidityBasic() public {
+        // First provide liquidity
+        token0.approve(address(pairs), 1 ether);
+        token1.approve(address(pairs), 1 ether);
+
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(pair, address(this));
+
+        // Now remove the liquidity
+        pairs.transfer(address(pairs), poolId, liquidity);
+        (uint256 amount0, uint256 amount1) = pairs.burn(pair, address(this));
+
+        assertEq(amount0, 1 ether - 1000, "unexpected amount0 returned");
+        assertEq(amount1, 1 ether - 1000, "unexpected amount1 returned");
+        assertReserves(1000, 1000);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, 1000, "MINIMUM_LIQUIDITY should remain locked");
+        assertEq(pairs.balanceOf(address(this), poolId), 0, "liquidity tokens not burned");
+    }
+
+    function testRemoveLiquidityETHBasic() public {
+        // First provide liquidity with ETH
+        uint256 startingETHBalance = address(this).balance;
+        token1.approve(address(pairs), 2 ether);
+
+        pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
+        pairs.deposit(ethPair.token1, 0, 2 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(ethPair, address(this));
+
+        uint256 balanceAfterAdd = address(this).balance;
+
+        // Now remove the liquidity
+        pairs.transfer(address(pairs), poolId, liquidity);
+        (uint256 amount0, uint256 amount1) = pairs.burn(ethPair, address(this));
+
+        // Calculate expected amounts for a 1:2 ratio pool
+        // The ETH amount should be proportional to the liquidity being burned
+        uint256 totalLiquidityPlusMinimum = liquidity + 1000;
+        uint256 expectedETHAmount = (1 ether * liquidity) / totalLiquidityPlusMinimum;
+        uint256 expectedTokenAmount = (2 ether * liquidity) / totalLiquidityPlusMinimum;
+
+        assertEq(amount0, expectedETHAmount, "unexpected ETH amount returned");
+        assertEq(amount1, expectedTokenAmount, "unexpected token1 amount returned");
+
+        assertReservesETH(
+            uint112(1 ether - expectedETHAmount), uint112(2 ether - expectedTokenAmount)
+        );
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, 1000, "MINIMUM_LIQUIDITY should remain locked");
+        assertEq(pairs.balanceOf(address(this), poolId), 0, "liquidity tokens not burned");
+        assertEq(address(this).balance, balanceAfterAdd + amount0, "ETH not refunded correctly");
+    }
+
+    function testRemoveLiquidityPartial() public {
+        // First provide liquidity
+        token0.approve(address(pairs), 1 ether);
+        token1.approve(address(pairs), 1 ether);
+
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 1 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(pair, address(this));
+
+        // Remove half the liquidity
+        uint256 halfLiquidity = liquidity / 2;
+        pairs.transfer(address(pairs), poolId, halfLiquidity);
+        (uint256 amount0, uint256 amount1) = pairs.burn(pair, address(this));
+
+        // Verify proportional amounts returned
+        assertEq(amount0, (1 ether - 1000) / 2, "unexpected amount0 returned");
+        assertEq(amount1, (1 ether - 1000) / 2, "unexpected amount1 returned");
+
+        // Reserves should be reduced proportionally plus the MINIMUM_LIQUIDITY
+        uint256 expectedReserve = 1 ether - amount0;
+        assertReserves(uint112(expectedReserve), uint112(expectedReserve));
+
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, 1 ether - halfLiquidity, "incorrect remaining supply");
+        assertEq(
+            pairs.balanceOf(address(this), poolId), halfLiquidity, "incorrect remaining liquidity"
+        );
+    }
+
+    function testERC6909AddRemove() public {
+        token6909A.approve(address(pairs), token6909AId, 1 ether);
+        token6909B.approve(address(pairs), token6909BId, 1 ether);
+
+        // Add liquidity
+        pairs.deposit(erc6909Pair.token0, erc6909Pair.id0, 1 ether);
+        pairs.deposit(erc6909Pair.token1, erc6909Pair.id1, 1 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(erc6909Pair, address(this));
+
+        assertEq(liquidity, 1 ether - 1000, "unexpected liquidity");
+        assertERC6909Reserves(1 ether, 1 ether);
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, 1 ether);
+
+        // Remove liquidity
+        pairs.transfer(address(pairs), poolId, liquidity);
+        (uint256 amount0, uint256 amount1) = pairs.burn(erc6909Pair, address(this));
+
+        assertEq(amount0, 1 ether - 1000, "unexpected amount0 returned");
+        assertEq(amount1, 1 ether - 1000, "unexpected amount1 returned");
+        assertERC6909Reserves(1000, 1000);
+        (,,,,,, supply) = pairs.pools(poolId);
+        assertEq(supply, 1000, "MINIMUM_LIQUIDITY should remain locked");
+        assertEq(pairs.balanceOf(address(this), poolId), 0, "liquidity tokens not burned");
+    }
+
+    function testMixedTokenPair() public {
+        // Create a pair with one ERC6909 token and one ERC20 token
+        address token6909Addr = address(token6909A);
+        address tokenERC20Addr = address(token0);
+
+        // Get the correct order
+        address tokenA;
+        address tokenB;
+        uint256 idA;
+        uint256 idB;
+
+        if (token6909Addr < tokenERC20Addr) {
+            tokenA = token6909Addr;
+            tokenB = tokenERC20Addr;
+            idA = token6909AId;
+            idB = 0;
+        } else {
+            tokenA = tokenERC20Addr;
+            tokenB = token6909Addr;
+            idA = 0;
+            idB = token6909AId;
+        }
+
+        // Create PoolKey for mixed pair
+        VZPairs.PoolKey memory mixedPairKey =
+            VZPairs.PoolKey({token0: tokenA, id0: idA, token1: tokenB, id1: idB, swapFee: 30});
+
+        uint256 mixedPairId = computePoolId(mixedPairKey);
+
+        // Approve tokens
+        token6909A.approve(address(pairs), token6909AId, 1 ether);
+        token0.approve(address(pairs), 1 ether);
+
+        // Add liquidity with mixed pair directly
+        pairs.deposit(tokenA, idA, 1 ether);
+        pairs.deposit(tokenB, idB, 1 ether);
+        (uint256 poolId, uint256 liquidity) = pairs.initialize(mixedPairKey, address(this));
+
+        assertEq(liquidity, 1 ether - 1000, "unexpected liquidity");
+
+        // Verify reserves
+        (uint112 reserve0, uint112 reserve1,,,,,) = pairs.pools(poolId);
+        assertEq(reserve0, 1 ether, "unexpected reserve0");
+        assertEq(reserve1, 1 ether, "unexpected reserve1");
+        (,,,,,, uint256 supply) = pairs.pools(poolId);
+        assertEq(supply, 1 ether, "unexpected supply");
+    }
+
     receive() external payable {}
 }
 
