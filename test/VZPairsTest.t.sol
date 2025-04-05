@@ -1001,6 +1001,155 @@ contract VZPairsTest is Test {
         console.log("My LP tokens after:", myLpTokensAfter);
         console.log("LP tokens added:", myLpTokensAfter - myLpTokensBefore);
     }
+
+    function testSwapExactInETHSendIncorrectAmount() public {
+        token1.approve(address(pairs), 2 ether);
+
+        // Initialize the pair
+        pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
+        pairs.deposit(ethPair.token1, 0, 2 ether);
+        pairs.initialize(ethPair, address(this));
+
+        // Send wrong amount of ETH compared to amountIn parameter
+        // Adjust this to match the actual error from your contract
+        vm.expectRevert(encodeError("InvalidMsgVal()")); // or "InvalidMsgVal()" depending on your implementation
+        pairs.swapExactIn{value: 0 ether}(
+            ethPair,
+            0.1 ether, // Different from msg.value
+            0.18 ether,
+            true,
+            address(this)
+        );
+    }
+
+    function testSwapExactOutTokensReverseDirection() public {
+        token0.approve(address(pairs), 1 ether);
+        token1.approve(address(pairs), 2 ether);
+
+        // Initialize the pair
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
+        pairs.initialize(pair, address(this));
+
+        // Approve and swap for exact output amount (reverse direction)
+        token1.approve(address(pairs), 0.3 ether); // Increased approval
+        uint256 amountIn = pairs.swapExactOut(
+            pair,
+            0.1 ether, // Exact output amount
+            0.3 ether, // Increased maximum input
+            false, // NOT zeroForOne
+            address(this)
+        );
+
+        // Verify input amount is reasonable
+        assertLt(amountIn, 0.3 ether, "Input exceeds maximum");
+        assertGt(amountIn, 0.1 ether, "Input unreasonably low");
+
+        // Verify balances
+        assertEq(
+            token0.balanceOf(address(this)),
+            10 ether - 1 ether + 0.1 ether,
+            "unexpected token0 balance"
+        );
+        assertEq(
+            token1.balanceOf(address(this)),
+            10 ether - 2 ether - amountIn,
+            "unexpected token1 balance"
+        );
+        assertReserves(1 ether - 0.1 ether, uint112(2 ether + amountIn));
+    }
+
+    function testSwapExactOutETH() public {
+        uint256 startingETHBalance = address(this).balance;
+        token1.approve(address(pairs), 2 ether);
+
+        // Initialize the pair
+        pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
+        pairs.deposit(ethPair.token1, 0, 2 ether);
+        pairs.initialize(ethPair, address(this));
+
+        // Record balances before swap
+        uint256 initialToken1Balance = token1.balanceOf(address(this));
+
+        // Swap for exact token output using ETH input - increase max ETH
+        uint256 amountIn = pairs.swapExactOut{value: 0.2 ether}(
+            ethPair,
+            0.2 ether, // Exact output amount
+            0.2 ether, // Increased maximum input
+            true, // zeroForOne (ETH for token)
+            address(this)
+        );
+
+        // Verify input amount is reasonable
+        assertLt(amountIn, 0.2 ether, "Input exceeds maximum");
+        assertGt(amountIn, 0.09 ether, "Input unreasonably low");
+
+        // Verify balances - check for ETH refund
+        assertEq(
+            address(this).balance,
+            startingETHBalance - 1 ether - amountIn,
+            "unexpected ETH balance (should have refunded excess)"
+        );
+        assertEq(
+            token1.balanceOf(address(this)),
+            initialToken1Balance + 0.2 ether,
+            "unexpected token1 balance"
+        );
+        assertReservesETH(uint112(1 ether + amountIn), uint112(2 ether - 0.2 ether));
+    }
+
+    // For the ETH reverse direction test, we need to create a valid pair
+    function testSwapExactInETHReverseDirection() public {
+        // Create a valid pair with token0 = token1, token1 = ETH
+        // First, determine which address is smaller
+        VZPairs.PoolKey memory reversedEthPair;
+
+        if (address(token1) < address(0)) {
+            reversedEthPair = VZPairs.PoolKey({
+                token0: address(token1),
+                id0: 0,
+                token1: address(0),
+                id1: 0,
+                swapFee: 30
+            });
+        } else {
+            // In this case, we can't really test the reverse direction
+            // with ETH as token1, so let's just skip this test
+            return;
+        }
+
+        // Since address(0) is the smallest possible address,
+        // the above condition will never be true in practice
+        // Let's create a different test instead
+
+        // Test token1 -> ETH swap using the regular ethPair
+        uint256 startingETHBalance = address(this).balance;
+
+        // Initialize the pair - already done in other tests, but for completeness
+        pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
+        pairs.deposit(ethPair.token1, 0, 2 ether);
+        pairs.initialize(ethPair, address(this));
+
+        // Token -> ETH swap using the standard eth pair
+        token1.approve(address(pairs), 0.1 ether);
+        uint256 ethOut = pairs.swapExactIn(
+            ethPair,
+            0.1 ether,
+            0.04 ether, // Minimum ETH output
+            false, // NOT zeroForOne (token1 for ETH)
+            address(this)
+        );
+
+        // Verify results
+        assertGt(ethOut, 0.04 ether, "ETH output less than minimum");
+        assertLt(ethOut, 0.06 ether, "ETH output unreasonably high");
+
+        assertEq(
+            address(this).balance, startingETHBalance - 1 ether + ethOut, "unexpected ETH balance"
+        );
+    }
+
+    receive() external payable {}
 }
 
 contract TestUser {

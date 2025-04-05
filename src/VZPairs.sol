@@ -497,6 +497,8 @@ contract VZPairs is VZERC6909 {
 
     // ** ROUTER SWAP
 
+    error InvalidMsgVal();
+
     function swapExactIn(
         PoolKey calldata poolKey,
         uint256 amountIn,
@@ -513,9 +515,19 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         if (zeroForOne) {
-            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amountIn);
+            if (poolKey.token0 == address(0)) {
+                require(msg.value == amountIn, InvalidMsgVal());
+            } else {
+                require(msg.value == 0, InvalidMsgVal());
+                _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amountIn);
+            }
         } else {
-            _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amountIn);
+            if (poolKey.token1 == address(0)) {
+                require(msg.value == amountIn, InvalidMsgVal());
+            } else {
+                require(msg.value == 0, InvalidMsgVal());
+                _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amountIn);
+            }
         }
 
         if (zeroForOne) {
@@ -565,7 +577,16 @@ contract VZPairs is VZERC6909 {
             amountIn = _getAmountIn(amountOut, reserve0, reserve1, poolKey.swapFee);
             require(amountIn <= amountInMax, InsufficientInputAmount());
 
-            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amountIn);
+            if (poolKey.token0 == address(0)) {
+                require(msg.value >= amountIn, InvalidMsgVal());
+                if (msg.value > amountIn) {
+                    safeTransferETH(msg.sender, msg.value - amountIn);
+                }
+            } else {
+                require(msg.value == 0, InvalidMsgVal());
+                _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amountIn);
+            }
+
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
 
             uint256 balance0 = reserve0 + amountIn;
@@ -578,7 +599,16 @@ contract VZPairs is VZERC6909 {
             amountIn = _getAmountIn(amountOut, reserve1, reserve0, poolKey.swapFee);
             require(amountIn <= amountInMax, InsufficientInputAmount());
 
-            _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amountIn);
+            if (poolKey.token1 == address(0)) {
+                require(msg.value >= amountIn, InvalidMsgVal());
+                if (msg.value > amountIn) {
+                    safeTransferETH(msg.sender, msg.value - amountIn);
+                }
+            } else {
+                require(msg.value == 0, InvalidMsgVal());
+                _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amountIn);
+            }
+
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
 
             uint256 balance0 = reserve0 - amountOut;
