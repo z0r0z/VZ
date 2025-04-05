@@ -494,6 +494,125 @@ contract VZPairs is VZERC6909 {
             return(0x00, returndatasize())
         }
     }
+
+    // ** ROUTER SWAP
+
+    function swapExactIn(
+        PoolKey calldata poolKey,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        bool zeroForOne,
+        address to
+    ) public payable lock returns (uint256 amountOut) {
+        require(amountIn > 0, InsufficientInputAmount());
+        require(to != poolKey.token0, InvalidTo());
+        require(to != poolKey.token1, InvalidTo());
+
+        uint256 poolId = _computePoolId(poolKey);
+        Pool storage pool = pools[poolId];
+        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+
+        if (zeroForOne) {
+            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amountIn);
+        } else {
+            _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amountIn);
+        }
+
+        if (zeroForOne) {
+            amountOut = _getAmountOut(amountIn, reserve0, reserve1, poolKey.swapFee);
+            require(amountOut >= amountOutMin, InsufficientOutputAmount());
+            require(amountOut < reserve1, InsufficientLiquidity());
+
+            _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
+
+            uint256 balance0 = reserve0 + amountIn;
+            uint256 balance1 = reserve1 - amountOut;
+            _update(poolId, balance0, balance1, reserve0, reserve1);
+
+            emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
+        } else {
+            amountOut = _getAmountOut(amountIn, reserve1, reserve0, poolKey.swapFee);
+            require(amountOut >= amountOutMin, InsufficientOutputAmount());
+            require(amountOut < reserve0, InsufficientLiquidity());
+
+            _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
+
+            uint256 balance0 = reserve0 - amountOut;
+            uint256 balance1 = reserve1 + amountIn;
+            _update(poolId, balance0, balance1, reserve0, reserve1);
+
+            emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
+        }
+    }
+
+    function swapExactOut(
+        PoolKey calldata poolKey,
+        uint256 amountOut,
+        uint256 amountInMax,
+        bool zeroForOne,
+        address to
+    ) public payable lock returns (uint256 amountIn) {
+        require(amountOut > 0, InsufficientOutputAmount());
+        require(to != poolKey.token0, InvalidTo());
+        require(to != poolKey.token1, InvalidTo());
+
+        uint256 poolId = _computePoolId(poolKey);
+        Pool storage pool = pools[poolId];
+        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+
+        if (zeroForOne) {
+            require(amountOut < reserve1, InsufficientLiquidity());
+            amountIn = _getAmountIn(amountOut, reserve0, reserve1, poolKey.swapFee);
+            require(amountIn <= amountInMax, InsufficientInputAmount());
+
+            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amountIn);
+            _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
+
+            uint256 balance0 = reserve0 + amountIn;
+            uint256 balance1 = reserve1 - amountOut;
+            _update(poolId, balance0, balance1, reserve0, reserve1);
+
+            emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
+        } else {
+            require(amountOut < reserve0, InsufficientLiquidity());
+            amountIn = _getAmountIn(amountOut, reserve1, reserve0, poolKey.swapFee);
+            require(amountIn <= amountInMax, InsufficientInputAmount());
+
+            _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amountIn);
+            _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
+
+            uint256 balance0 = reserve0 - amountOut;
+            uint256 balance1 = reserve1 + amountIn;
+            _update(poolId, balance0, balance1, reserve0, reserve1);
+
+            emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
+        }
+    }
+
+    // ** ROUTER VIEW
+
+    /// @dev Calculate output amount for a given input amount.
+    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+        internal
+        pure
+        returns (uint256 amountOut)
+    {
+        uint256 amountInWithFee = amountIn * (10000 - swapFee);
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = (reserveIn * 10000) + amountInWithFee;
+        return numerator / denominator;
+    }
+
+    /// @dev Calculate input amount for a desired output amount.
+    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+        internal
+        pure
+        returns (uint256 amountIn)
+    {
+        uint256 numerator = reserveIn * amountOut * 10000;
+        uint256 denominator = (reserveOut - amountOut) * (10000 - swapFee);
+        return (numerator / denominator) + 1;
+    }
 }
 
 /// @dev Minimal VZ swap call interface.
