@@ -115,6 +115,7 @@ contract VZPairsTest is Test {
         token6909B.mint(address(testUser), token6909BId, 10 ether);
 
         payable(address(testUser)).transfer(3.33 ether);
+        token1.approve(address(pairs), 2 ether);
     }
 
     /// @dev Helper function to compute poolId from PoolKey.
@@ -429,6 +430,16 @@ contract VZPairsTest is Test {
             "unexpected token1 balance"
         );
         assertReservesETH(1 ether + 0.1 ether, uint112(2 ether - amountOut));
+    }
+
+    function testSwapETHScenarioGas() public payable {
+        pairs.deposit{value: 1 ether}(address(0), 0, 1 ether);
+        pairs.deposit(address(token1), 0, 2 ether);
+        pairs.initialize(ethPair, address(this));
+
+        uint256 amountOut = 0.181322178776029826 ether;
+        pairs.deposit{value: 0.1 ether}(ethPair.token0, 0, 0.1 ether);
+        pairs.swap(ethPair, 0, amountOut, address(this), "");
     }
 
     function testSwapBasicScenarioReverseDirection() public {

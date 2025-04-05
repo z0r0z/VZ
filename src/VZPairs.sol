@@ -202,7 +202,7 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    /// @dev Helper function to pull token balances into pool.
+    /// @dev Helper function to pull token balances into transient storage.
     function deposit(address token, uint256 id, uint256 amount) public payable lock {
         if (token == address(0)) amount = msg.value;
         else _safeTransferFrom(token, msg.sender, id, amount);
@@ -288,7 +288,7 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
-        // Always clear deposit keys for tokens that were added to the pool.
+        // Always clear tokens that were added to the pool.
         if (deposit0 > 0) _clearWithKey(depositKey0);
         if (deposit1 > 0) _clearWithKey(depositKey1);
         emit Mint(poolId, msg.sender, deposit0, deposit1);
@@ -336,6 +336,7 @@ contract VZPairs is VZERC6909 {
 
         _update(poolId, balance0, balance1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
+        // Only clear output tokens if they weren't sent back to this contract.
         if (to != address(this)) {
             if (amount0 > 0) _clearWithKey(depositKey0);
             if (amount1 > 0) _clearWithKey(depositKey1);
@@ -368,7 +369,7 @@ contract VZPairs is VZERC6909 {
         require(to != poolKey.token0, InvalidTo());
         require(to != poolKey.token1, InvalidTo());
 
-        // Optimistically transfer tokens. If `to` is `this`, tstore.
+        // Optimistically transfer tokens. If `to` is `this`, tstore for multihop.
         if (amount0Out > 0) _safeTransfer(poolKey.token0, to, poolKey.id0, amount0Out);
         if (amount1Out > 0) _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
         if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
@@ -423,7 +424,7 @@ contract VZPairs is VZERC6909 {
         uint256 balance1 = pool.reserve1 + deposit1;
         _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
 
-        // Clear deposit keys for tokens that were added to the pool.
+        // Always clear tokens that were added to the pool.
         if (deposit0 > 0) _clearWithKey(depositKey0);
         if (deposit1 > 0) _clearWithKey(depositKey1);
     }
@@ -452,13 +453,16 @@ contract VZPairs is VZERC6909 {
         }
     }
 
-    error MulticallFail();
-
+    /// @dev Enables calling multiple methods in a single call to the contract.
     function multicall(bytes[] calldata data) public returns (bytes[] memory results) {
         results = new bytes[](data.length);
         for (uint256 i; i != data.length; ++i) {
             (bool success, bytes memory result) = address(this).delegatecall(data[i]);
-            require(success, MulticallFail());
+            if (!success) {
+                assembly ("memory-safe") {
+                    revert(add(result, 0x20), mload(result))
+                }
+            }
             results[i] = result;
         }
     }
