@@ -507,7 +507,7 @@ contract VZPairs is VZERC6909 {
         address to,
         uint256 deadline
     ) public payable lock returns (uint256 amountOut) {
-        require(block.timestamp <= deadline, Expired());
+        require(deadline >= block.timestamp, Expired());
         require(amountIn > 0, InsufficientInputAmount());
         require(to != poolKey.token0, InvalidTo());
         require(to != poolKey.token1, InvalidTo());
@@ -567,7 +567,7 @@ contract VZPairs is VZERC6909 {
         address to,
         uint256 deadline
     ) public payable lock returns (uint256 amountIn) {
-        require(block.timestamp <= deadline, Expired());
+        require(deadline >= block.timestamp, Expired());
         require(amountOut > 0, InsufficientOutputAmount());
         require(to != poolKey.token0, InvalidTo());
         require(to != poolKey.token1, InvalidTo());
@@ -636,24 +636,31 @@ contract VZPairs is VZERC6909 {
         address to,
         uint256 deadline
     ) public payable lock returns (uint256 amount0, uint256 amount1, uint256 liquidity) {
-        require(block.timestamp <= deadline, Expired());
+        require(deadline >= block.timestamp, Expired());
 
+        // Compute pool ID and check if new pool
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
-        bool newPool = pool.supply == 0;
+        bool isNewPool = pool.supply == 0;
 
-        if (newPool) {
+        // Calculate optimal amounts
+        if (isNewPool) {
             amount0 = amount0Desired;
             amount1 = amount1Desired;
         } else {
-            (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+            uint112 reserve0 = pool.reserve0;
+            uint112 reserve1 = pool.reserve1;
+
+            // Try to use amount0Desired and calculate amount1
             uint256 amount1Optimal = mulDiv(amount0Desired, reserve1, reserve0);
 
             if (amount1Optimal <= amount1Desired) {
+                // amount1Optimal is our limiting factor
                 require(amount1Optimal >= amount1Min, InsufficientOutputAmount());
                 amount0 = amount0Desired;
                 amount1 = amount1Optimal;
             } else {
+                // amount1Desired is our limiting factor, calculate optimal amount0
                 uint256 amount0Optimal = mulDiv(amount1Desired, reserve0, reserve1);
                 require(amount0Optimal >= amount0Min, InsufficientOutputAmount());
                 amount0 = amount0Optimal;
@@ -661,29 +668,42 @@ contract VZPairs is VZERC6909 {
             }
         }
 
-        uint256 ethValue = msg.value;
+        // Check token types
         bool isToken0ETH = poolKey.token0 == address(0);
         bool isToken1ETH = poolKey.token1 == address(0);
 
-        if (isToken0ETH) {
-            require(ethValue >= amount0, InvalidMsgVal());
-            ethValue -= amount0;
+        // Calculate and validate ETH amount
+        uint256 ethNeeded = isToken0ETH ? amount0 : 0;
+        if (isToken1ETH) ethNeeded += amount1;
+
+        if (ethNeeded > 0) {
+            require(msg.value >= ethNeeded, InvalidMsgVal());
         } else {
-            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amount0);
+            require(msg.value == 0, InvalidMsgVal());
+        }
+
+        // Process deposits - handle ETH deposit first to prevent reentrancy concerns
+        if (isToken0ETH) {
+            deposit(address(0), 0, amount0);
+        } else {
+            deposit(poolKey.token0, poolKey.id0, amount0);
         }
 
         if (isToken1ETH) {
-            require(ethValue >= amount1, InvalidMsgVal());
-            ethValue -= amount1;
+            deposit(address(0), 0, amount1);
         } else {
-            _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amount1);
+            deposit(poolKey.token1, poolKey.id1, amount1);
         }
 
-        if (ethValue > 0) safeTransferETH(msg.sender, ethValue);
+        // Return excess ETH
+        uint256 excess = msg.value - ethNeeded;
+        if (excess > 0) {
+            safeTransferETH(msg.sender, excess);
+        }
 
-        if (newPool) {
-            (, uint256 liq) = initialize(poolKey, to);
-            liquidity = liq;
+        // Call pool initialization or mint
+        if (isNewPool) {
+            (, liquidity) = initialize(poolKey, to);
         } else {
             liquidity = mint(poolKey, to);
         }
@@ -697,7 +717,7 @@ contract VZPairs is VZERC6909 {
         address to,
         uint256 deadline
     ) public lock returns (uint256 amount0, uint256 amount1) {
-        require(block.timestamp <= deadline, Expired());
+        require(deadline >= block.timestamp, Expired());
         transferFrom(msg.sender, address(this), _computePoolId(poolKey), liquidity);
         (amount0, amount1) = burn(poolKey, to);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
