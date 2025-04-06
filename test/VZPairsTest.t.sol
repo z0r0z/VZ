@@ -642,18 +642,20 @@ contract VZPairsTest is Test {
         assertBlockTimestampLast(6);
         assertCumulativePrices(initialPrice0 * 3 + newPrice0 * 3, initialPrice1 * 3 + newPrice1 * 3);
     }
-    /*
+
     function testFlashloan() public {
         token0.approve(address(pairs), 1 ether);
         token1.approve(address(pairs), 2 ether);
 
-        uint256 poolId = pairs.deposit(pair, 1 ether, 2 ether);
+        pairs.deposit(pair.token0, 0, 1 ether);
+        pairs.deposit(pair.token1, 0, 2 ether);
+
         pairs.initialize(pair, address(this));
 
         uint256 flashloanAmount = 0.1 ether;
         uint256 flashloanFee = (flashloanAmount * 1000) / 997 - flashloanAmount + 1;
 
-        Flashloaner fl = new Flashloaner(poolId, pair);
+        Flashloaner fl = new Flashloaner(pairId, pair);
 
         token1.transfer(address(fl), flashloanFee);
 
@@ -662,7 +664,6 @@ contract VZPairsTest is Test {
         assertEq(token1.balanceOf(address(fl)), 0);
         assertEq(token1.balanceOf(address(pairs)), 2 ether + flashloanFee);
     }
-    */
 
     function testERC6909Bootstrap() public {
         token6909A.approve(address(pairs), token6909AId, 1 ether);
@@ -1018,7 +1019,8 @@ contract VZPairsTest is Test {
             0.1 ether, // Different from msg.value
             0.18 ether,
             true,
-            address(this)
+            address(this),
+            block.timestamp
         );
     }
 
@@ -1038,7 +1040,8 @@ contract VZPairsTest is Test {
             0.1 ether, // Exact output amount
             0.3 ether, // Increased maximum input
             false, // NOT zeroForOne
-            address(this)
+            address(this),
+            block.timestamp
         );
 
         // Verify input amount is reasonable
@@ -1077,7 +1080,8 @@ contract VZPairsTest is Test {
             0.2 ether, // Exact output amount
             0.2 ether, // Increased maximum input
             true, // zeroForOne (ETH for token)
-            address(this)
+            address(this),
+            block.timestamp
         );
 
         // Verify input amount is reasonable
@@ -1137,7 +1141,8 @@ contract VZPairsTest is Test {
             0.1 ether,
             0.04 ether, // Minimum ETH output
             false, // NOT zeroForOne (token1 for ETH)
-            address(this)
+            address(this),
+            block.timestamp
         );
 
         // Verify results
@@ -1209,7 +1214,7 @@ contract VZPairsTest is Test {
 
         pairs.deposit(pair.token0, 0, 1 ether);
         pairs.deposit(pair.token1, 0, 2 ether);
-        (uint256 poolId, uint256 initialLiquidity) = pairs.initialize(pair, address(this));
+        (, uint256 initialLiquidity) = pairs.initialize(pair, address(this));
 
         // Add more liquidity maintaining the ratio
         pairs.deposit(pair.token0, 0, 1.5 ether);
@@ -1249,8 +1254,6 @@ contract VZPairsTest is Test {
     }
 
     function testRemoveLiquidityETHBasic() public {
-        // First provide liquidity with ETH
-        uint256 startingETHBalance = address(this).balance;
         token1.approve(address(pairs), 2 ether);
 
         pairs.deposit{value: 1 ether}(ethPair.token0, 0, 1 ether);
@@ -1363,7 +1366,7 @@ contract VZPairsTest is Test {
         VZPairs.PoolKey memory mixedPairKey =
             VZPairs.PoolKey({token0: tokenA, id0: idA, token1: tokenB, id1: idB, swapFee: 30});
 
-        uint256 mixedPairId = computePoolId(mixedPairKey);
+        computePoolId(mixedPairKey);
 
         // Approve tokens
         token6909A.approve(address(pairs), token6909AId, 1 ether);
@@ -1467,7 +1470,7 @@ contract Flashloaner {
 
         ERC20(tokenAddress).approve(msg.sender, balance);
 
-        VZPairs(payable(msg.sender)).deposit(pair.token0, 0, balance);
+        VZPairs(payable(msg.sender)).deposit(tokenAddress, 0, balance);
     }
 }
 

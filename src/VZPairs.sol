@@ -202,9 +202,11 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    error InvalidMsgVal();
+
     /// @dev Helper function to pull token balances into transient storage.
-    function deposit(address token, uint256 id, uint256 amount) public payable lock {
-        if (token == address(0)) amount = msg.value;
+    function deposit(address token, uint256 id, uint256 amount) public payable {
+        if (token == address(0)) require(msg.value == amount, InvalidMsgVal());
         else _safeTransferFrom(token, msg.sender, id, amount);
 
         uint256 depositKey = _computeDepositKey(token, id);
@@ -497,15 +499,15 @@ contract VZPairs is VZERC6909 {
 
     // ** ROUTER SWAP
 
-    error InvalidMsgVal();
-
     function swapExactIn(
         PoolKey calldata poolKey,
         uint256 amountIn,
         uint256 amountOutMin,
         bool zeroForOne,
-        address to
+        address to,
+        uint256 deadline
     ) public payable lock returns (uint256 amountOut) {
+        require(block.timestamp <= deadline, Expired());
         require(amountIn > 0, InsufficientInputAmount());
         require(to != poolKey.token0, InvalidTo());
         require(to != poolKey.token1, InvalidTo());
@@ -562,8 +564,10 @@ contract VZPairs is VZERC6909 {
         uint256 amountOut,
         uint256 amountInMax,
         bool zeroForOne,
-        address to
+        address to,
+        uint256 deadline
     ) public payable lock returns (uint256 amountIn) {
+        require(block.timestamp <= deadline, Expired());
         require(amountOut > 0, InsufficientOutputAmount());
         require(to != poolKey.token0, InvalidTo());
         require(to != poolKey.token1, InvalidTo());
