@@ -638,12 +638,10 @@ contract VZPairs is VZERC6909 {
     ) public payable lock returns (uint256 amount0, uint256 amount1, uint256 liquidity) {
         require(deadline >= block.timestamp, Expired());
 
-        // Compute pool ID and check if new pool
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         bool isNewPool = pool.supply == 0;
 
-        // Calculate optimal amounts
         if (isNewPool) {
             amount0 = amount0Desired;
             amount1 = amount1Desired;
@@ -651,16 +649,13 @@ contract VZPairs is VZERC6909 {
             uint112 reserve0 = pool.reserve0;
             uint112 reserve1 = pool.reserve1;
 
-            // Try to use amount0Desired and calculate amount1
             uint256 amount1Optimal = mulDiv(amount0Desired, reserve1, reserve0);
 
             if (amount1Optimal <= amount1Desired) {
-                // amount1Optimal is our limiting factor
                 require(amount1Optimal >= amount1Min, InsufficientOutputAmount());
                 amount0 = amount0Desired;
                 amount1 = amount1Optimal;
             } else {
-                // amount1Desired is our limiting factor, calculate optimal amount0
                 uint256 amount0Optimal = mulDiv(amount1Desired, reserve0, reserve1);
                 require(amount0Optimal >= amount0Min, InsufficientOutputAmount());
                 amount0 = amount0Optimal;
@@ -668,11 +663,9 @@ contract VZPairs is VZERC6909 {
             }
         }
 
-        // Check token types
         bool isToken0ETH = poolKey.token0 == address(0);
         bool isToken1ETH = poolKey.token1 == address(0);
 
-        // Calculate and validate ETH amount
         uint256 ethNeeded = isToken0ETH ? amount0 : 0;
         if (isToken1ETH) ethNeeded += amount1;
 
@@ -682,7 +675,6 @@ contract VZPairs is VZERC6909 {
             require(msg.value == 0, InvalidMsgVal());
         }
 
-        // Process deposits - handle ETH deposit first to prevent reentrancy concerns
         if (isToken0ETH) {
             deposit(address(0), 0, amount0);
         } else {
@@ -695,13 +687,11 @@ contract VZPairs is VZERC6909 {
             deposit(poolKey.token1, poolKey.id1, amount1);
         }
 
-        // Return excess ETH
         uint256 excess = msg.value - ethNeeded;
         if (excess > 0) {
             safeTransferETH(msg.sender, excess);
         }
 
-        // Call pool initialization or mint
         if (isNewPool) {
             (, liquidity) = initialize(poolKey, to);
         } else {
