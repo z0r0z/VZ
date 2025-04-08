@@ -236,13 +236,12 @@ contract VZPairs is VZERC6909 {
                 ),
             InvalidPoolTokens()
         );
-        require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee()); // Ensure swap fee limit.
+        require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee());
 
         poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
         require(pool.supply == 0, PoolExists());
 
-        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -273,14 +272,11 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
 
-        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
         uint256 deposit0 = _getDepositWithKey(depositKey0);
         uint256 deposit1 = _getDepositWithKey(depositKey1);
-        uint256 balance0 = reserve0 + deposit0;
-        uint256 balance1 = reserve1 + deposit1;
 
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
         liquidity = min(mulDiv(deposit0, supply, reserve0), mulDiv(deposit1, supply, reserve1));
@@ -288,7 +284,7 @@ contract VZPairs is VZERC6909 {
         _mint(to, poolId, liquidity);
         pool.supply += liquidity;
 
-        _update(poolId, balance0, balance1, reserve0, reserve1);
+        _update(poolId, reserve0 + deposit0, reserve1 + deposit1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
         // Always clear tokens that were added to the pool.
         if (deposit0 > 0) _clearWithKey(depositKey0);
@@ -309,7 +305,6 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
 
-        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -376,7 +371,6 @@ contract VZPairs is VZERC6909 {
         if (amount1Out > 0) _safeTransfer(poolKey.token1, to, poolKey.id1, amount1Out);
         if (data.length > 0) IVZCallee(to).vzCall(poolId, msg.sender, amount0Out, amount1Out, data);
 
-        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
@@ -416,15 +410,15 @@ contract VZPairs is VZERC6909 {
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
 
-        // Precompute deposit keys.
         uint256 depositKey0 = _computeDepositKey(poolKey.token0, poolKey.id0);
         uint256 depositKey1 = _computeDepositKey(poolKey.token1, poolKey.id1);
 
         uint256 deposit0 = _getDepositWithKey(depositKey0);
         uint256 deposit1 = _getDepositWithKey(depositKey1);
-        uint256 balance0 = pool.reserve0 + deposit0;
-        uint256 balance1 = pool.reserve1 + deposit1;
-        _update(poolId, balance0, balance1, pool.reserve0, pool.reserve1);
+
+        _update(
+            poolId, pool.reserve0 + deposit0, pool.reserve1 + deposit1, pool.reserve0, pool.reserve1
+        );
 
         // Always clear tokens that were added to the pool.
         if (deposit0 > 0) _clearWithKey(depositKey0);
@@ -499,6 +493,8 @@ contract VZPairs is VZERC6909 {
 
     // ** ROUTER SWAP
 
+    error Expired();
+
     function swapExactIn(
         PoolKey calldata poolKey,
         uint256 amountIn,
@@ -538,10 +534,7 @@ contract VZPairs is VZERC6909 {
             require(amountOut < reserve1, InsufficientLiquidity());
 
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
-
-            uint256 balance0 = reserve0 + amountIn;
-            uint256 balance1 = reserve1 - amountOut;
-            _update(poolId, balance0, balance1, reserve0, reserve1);
+            _update(poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
@@ -550,10 +543,7 @@ contract VZPairs is VZERC6909 {
             require(amountOut < reserve0, InsufficientLiquidity());
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
-
-            uint256 balance0 = reserve0 - amountOut;
-            uint256 balance1 = reserve1 + amountIn;
-            _update(poolId, balance0, balance1, reserve0, reserve1);
+            _update(poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -592,10 +582,7 @@ contract VZPairs is VZERC6909 {
             }
 
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
-
-            uint256 balance0 = reserve0 + amountIn;
-            uint256 balance1 = reserve1 - amountOut;
-            _update(poolId, balance0, balance1, reserve0, reserve1);
+            _update(poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
@@ -614,18 +601,13 @@ contract VZPairs is VZERC6909 {
             }
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
-
-            uint256 balance0 = reserve0 - amountOut;
-            uint256 balance1 = reserve1 + amountIn;
-            _update(poolId, balance0, balance1, reserve0, reserve1);
+            _update(poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
     }
 
     // ** ROUTER LIQ
-
-    error Expired();
 
     function addLiquidity(
         PoolKey calldata poolKey,
@@ -640,63 +622,63 @@ contract VZPairs is VZERC6909 {
 
         uint256 poolId = _computePoolId(poolKey);
         Pool storage pool = pools[poolId];
-        bool isNewPool = pool.supply == 0;
 
-        if (isNewPool) {
-            amount0 = amount0Desired;
-            amount1 = amount1Desired;
+        (uint112 reserve0, uint112 reserve1, uint256 supply) =
+            (pool.reserve0, pool.reserve1, pool.supply);
+
+        if (supply == 0) {
+            (amount0, amount1) = (amount0Desired, amount1Desired);
         } else {
-            uint112 reserve0 = pool.reserve0;
-            uint112 reserve1 = pool.reserve1;
-
             uint256 amount1Optimal = mulDiv(amount0Desired, reserve1, reserve0);
-
             if (amount1Optimal <= amount1Desired) {
                 require(amount1Optimal >= amount1Min, InsufficientOutputAmount());
-                amount0 = amount0Desired;
-                amount1 = amount1Optimal;
+                (amount0, amount1) = (amount0Desired, amount1Optimal);
             } else {
                 uint256 amount0Optimal = mulDiv(amount1Desired, reserve0, reserve1);
+                assert(amount0Optimal <= amount0Desired);
                 require(amount0Optimal >= amount0Min, InsufficientOutputAmount());
-                amount0 = amount0Optimal;
-                amount1 = amount1Desired;
+                (amount0, amount1) = (amount0Optimal, amount1Desired);
             }
         }
 
-        bool isToken0ETH = poolKey.token0 == address(0);
-        bool isToken1ETH = poolKey.token1 == address(0);
-
-        uint256 ethNeeded = isToken0ETH ? amount0 : 0;
-        if (isToken1ETH) ethNeeded += amount1;
-
-        if (ethNeeded > 0) {
-            require(msg.value >= ethNeeded, InvalidMsgVal());
+        if (poolKey.token0 == address(0)) {
+            require(msg.value == amount0, InvalidMsgVal());
         } else {
             require(msg.value == 0, InvalidMsgVal());
+            _safeTransferFrom(poolKey.token0, msg.sender, poolKey.id0, amount0);
         }
 
-        if (isToken0ETH) {
-            deposit(address(0), 0, amount0);
+        _safeTransferFrom(poolKey.token1, msg.sender, poolKey.id1, amount1);
+
+        bool feeOn = _mintFee(poolId, reserve0, reserve1);
+
+        if (supply == 0) {
+            require(
+                (poolKey.token0 < poolKey.token1)
+                    || (
+                        poolKey.token0 == poolKey.token1 && poolKey.id0 > 0 && poolKey.id1 > 0
+                            && poolKey.id0 != poolKey.id1
+                    ),
+                InvalidPoolTokens()
+            );
+            require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee());
+            liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+            require(liquidity != 0, InsufficientLiquidityMinted());
+            _mint(address(0), poolId, MINIMUM_LIQUIDITY);
+            _mint(to, poolId, liquidity);
+            unchecked {
+                pool.supply = liquidity + MINIMUM_LIQUIDITY;
+            }
         } else {
-            deposit(poolKey.token0, poolKey.id0, amount0);
+            liquidity = min(mulDiv(amount0, supply, reserve0), mulDiv(amount1, supply, reserve1));
+            require(liquidity != 0, InsufficientLiquidityMinted());
+            _mint(to, poolId, liquidity);
+            pool.supply += liquidity;
         }
 
-        if (isToken1ETH) {
-            deposit(address(0), 0, amount1);
-        } else {
-            deposit(poolKey.token1, poolKey.id1, amount1);
-        }
-
-        uint256 excess = msg.value - ethNeeded;
-        if (excess > 0) {
-            safeTransferETH(msg.sender, excess);
-        }
-
-        if (isNewPool) {
-            (, liquidity) = initialize(poolKey, to);
-        } else {
-            liquidity = mint(poolKey, to);
-        }
+        _update(poolId, amount0 + reserve0, amount1 + reserve1, reserve0, reserve1);
+        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
+        emit Mint(poolId, msg.sender, amount0, amount1);
     }
 
     function removeLiquidity(
@@ -708,10 +690,29 @@ contract VZPairs is VZERC6909 {
         uint256 deadline
     ) public lock returns (uint256 amount0, uint256 amount1) {
         require(deadline >= block.timestamp, Expired());
-        transferFrom(msg.sender, address(this), _computePoolId(poolKey), liquidity);
-        (amount0, amount1) = burn(poolKey, to);
+        uint256 poolId = _computePoolId(poolKey);
+        Pool storage pool = pools[poolId];
+        (uint112 reserve0, uint112 reserve1, uint256 supply) =
+            (pool.reserve0, pool.reserve1, pool.supply);
+
+        transferFrom(msg.sender, address(this), poolId, liquidity);
+
+        bool feeOn = _mintFee(poolId, reserve0, reserve1);
+        amount0 = mulDiv(liquidity, reserve0, supply);
+        amount1 = mulDiv(liquidity, reserve1, supply);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
         require(amount1 >= amount1Min, InsufficientOutputAmount());
+        _burn(poolId, liquidity);
+        unchecked {
+            pool.supply -= liquidity;
+        }
+
+        _safeTransfer(poolKey.token0, to, poolKey.id0, amount0);
+        _safeTransfer(poolKey.token1, to, poolKey.id1, amount1);
+
+        _update(poolId, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
+        if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
+        emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
 
     // ** ROUTER MATH
