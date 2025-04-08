@@ -463,6 +463,16 @@ contract VZPairs is VZERC6909 {
         }
     }
 
+    /// @dev ETH receiver.
+    receive() external payable {
+        uint256 depositKey = _computeDepositKey(address(0), 0);
+        uint256 currentAmount = _getDepositWithKey(depositKey);
+
+        assembly ("memory-safe") {
+            tstore(depositKey, add(currentAmount, callvalue()))
+        }
+    }
+
     /// @dev Calldata compression (https://github.com/Vectorized/solady/blob/main/src/utils/LibZip).
     fallback() external payable {
         assembly ("memory-safe") {
