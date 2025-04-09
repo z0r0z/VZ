@@ -1,16 +1,28 @@
 # Uniswap VZ
 
-Contemporary Uniswap V2 Factory (VZ). By [z0r0z](https://x.com/z0r0zzz).
+Contemporary Uniswap V2 (VZ). By [z0r0z](https://x.com/z0r0zzz).
+
+Deployed efficiently to every chain at [`0x000000000000d63359f97583372f0a1de7bc76b5`](https://contractscan.xyz/contract/0x000000000000d63359f97583372F0a1de7bC76b5).
 
 Changes are meant to cause little disruption to the familiar and battle-tested [Uniswap V2 core](https://github.com/Uniswap/v2-core). While also introducing efficiency and optimized patterns the public has otherwise made through opinionated forks. VZ should consolidate, reform and optimize these variations as much as possible to represent a simple and useable VZ.
 
 Changes include the following:
 
-✵ Latest Solidity Compiler (0.8.26)
+✵ ETH pool support (`address(0)`)
+
+✵ Built-in router logic (easy pz)
+
+✵ ERC6909 mulitoken swap support
+
+✵ Custom fee tiers (up to 100%)
 
 ✵ Adapted Syntax (e.g. safemath)
 
+✵ Latest Solidity Compiler (0.8.29)
+
 ✵ *Solady* most of the things *etc.*
+
+Note: The biggest design difference is that the VZ pairs singleton expects a `pull` pattern of `transferFrom` rather than direct transfers. The `deposit()` function should be called by external routers on locally via multicall. Convenience functions are also provided such as `addLiquidity`, `removeLiquidity`, `swapExactIn` and `swapExactOut` to replicate the classic V2 router dev experience. Enjoy!
 
 ## Getting Started
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.29;
 
 // Modified from Solady (https://github.com/Vectorized/solady/blob/main/src/utils/FixedPointMathLib.sol)
 
@@ -10,16 +10,13 @@ function min(uint256 x, uint256 y) pure returns (uint256 z) {
     }
 }
 
-/// @dev The operation failed, either due to a multiplication overflow, or a division by a zero.
-error MulDivFailed();
-
 /// @dev Returns `floor(x * y / d)`.
 /// Reverts if `x * y` overflows, or `d` is zero.
 function mulDiv(uint256 x, uint256 y, uint256 d) pure returns (uint256 z) {
     assembly ("memory-safe") {
         z := mul(x, y)
         if iszero(mul(or(iszero(x), eq(div(z, x), y)), d)) {
-            mstore(0x00, 0xad251c27) // `MulDivFailed()`.
+            mstore(0x00, 0xad251c27)
             revert(0x1c, 0x04)
         }
         z := div(z, d)
