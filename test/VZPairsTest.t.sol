@@ -64,8 +64,9 @@ contract VZPairsTest is Test {
             swapFee: 30
         });
 
+        vm.broadcast(address(1));
         // Regular setup
-        pairs = new VZPairs(address(1));
+        pairs = new VZPairs();
 
         // Create PoolKey structs using the same variable names as before
         pair = VZPairs.PoolKey({
@@ -951,7 +952,7 @@ contract VZPairsTest is Test {
     function testProtocolFeeCollection() public {
         // Set fee receiver (must use prank to simulate being the feeToSetter from constructor)
         address feeReceiver = address(0xFEE);
-        vm.prank(address(1)); // This is the feeToSetter from constructor
+        vm.broadcast(address(1));
         pairs.setFeeTo(feeReceiver);
 
         token0.approve(address(pairs), 10 ether);

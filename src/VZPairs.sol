@@ -135,9 +135,9 @@ contract VZPairs is VZERC6909 {
     );
     event Sync(uint256 indexed poolId, uint112 reserve0, uint112 reserve1);
 
-    constructor(address feeToSetter) payable {
+    constructor() payable {
         assembly ("memory-safe") {
-            sstore(0x00, feeToSetter)
+            sstore(0x00, origin())
         }
     }
 
