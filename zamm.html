@@ -1,0 +1,1283 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AMM</title>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"
+      type="application/javascript"
+    ></script>
+    <style>
+      :root {
+        --bg: #000000;
+        --text: #ffffff;
+        --border: #333333;
+        --hover: #222222;
+        --error: #ff3333;
+        --success: #ffffff;
+      }
+
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          monospace;
+      }
+
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1.5;
+        padding: 20px;
+      }
+
+
+      .app {
+        width: 100%;
+        max-width: 400px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        padding: 24px;
+      }
+
+
+      .header {
+        margin-bottom: 24px;
+        text-align: center;
+      }
+
+
+      .input-group {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+
+
+      .input-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+
+
+      .input-row {
+        display: flex;
+        gap: 12px;
+      }
+
+
+      input {
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-size: 24px;
+        width: 100%;
+        outline: none;
+      }
+
+
+      input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+      }
+
+
+      button {
+        background: transparent;
+        border: 1px solid var(--text);
+        color: var(--text);
+        padding: 12px 24px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      }
+
+
+      button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        border-color: var(--border);
+      }
+
+
+      .token-select {
+        padding: 8px 16px;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 100px;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+
+      .swap-info {
+        margin: 16px 0;
+        font-size: 12px;
+      }
+
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        opacity: 0.7;
+      }
+
+
+      .swap-arrow {
+        width: 100%;
+        text-align: center;
+        margin: 8px 0;
+      }
+
+
+      .swap-arrow button {
+        background: none;
+        border: none;
+        color: var(--text);
+        padding: 8px;
+        opacity: 0.5;
+        font-size: 20px;
+      }
+
+
+      .swap-arrow button:hover {
+        opacity: 1;
+      }
+
+
+      .notification {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        background: var(--text);
+        color: var(--bg);
+        transform: translateY(100px);
+        opacity: 0;
+        transition: all 0.3s;
+      }
+
+
+      .notification.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+
+      .network-status {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        font-size: 12px;
+        opacity: 0.7;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--error);
+      }
+
+
+      .status-dot.connected {
+        background: var(--success);
+      }
+
+
+      .pool-select {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        justify-content: center;
+      }
+
+
+      .pool-option {
+        padding: 8px 16px;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+        cursor: pointer;
+        transition: all 0.2s;
+        border-radius: 4px;
+      }
+
+
+      .pool-option.active {
+        background: var(--border);
+      }
+
+
+      .pool-option:hover {
+        background: var(--hover);
+      }
+
+
+      @media (max-width: 480px) {
+        .app {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="network-status">
+      <div class="status-dot" id="networkDot"></div>
+      <span id="networkStatus">Disconnected</span>
+    </div>
+
+
+    <div class="app">
+      <div class="header">
+        <h1>ZAMM</h1>
+      </div>
+
+
+      <div id="connectSection">
+        <button id="connectButton" class="connect-button">
+          Connect Wallet
+        </button>
+      </div>
+
+
+      <div id="swapSection" style="display: none">
+        <div class="pool-select">
+          <button class="pool-option active" id="ethCoin">ETH ↔ COIN</button>
+          <button class="pool-option" id="ethUsdc">ETH ↔ USDC</button>
+        </div>
+
+
+        <div class="input-group">
+          <div class="input-header">
+            <span>From</span>
+            <span id="fromBalance">0 ETH</span>
+          </div>
+          <div class="input-row">
+            <input type="number" id="fromAmount" placeholder="0.0" />
+            <div class="token-select" id="fromToken">ETH</div>
+          </div>
+        </div>
+
+
+        <div class="swap-arrow">
+          <button id="swapDirection">↓</button>
+        </div>
+
+
+        <div class="input-group">
+          <div class="input-header">
+            <span>To (estimated)</span>
+            <span id="toBalance">0 COIN</span>
+          </div>
+          <div class="input-row">
+            <input type="number" id="toAmount" placeholder="0.0" />
+            <div class="token-select" id="toToken">COIN</div>
+          </div>
+        </div>
+
+
+        <div class="swap-info">
+          <div class="info-row">
+            <span>Rate</span>
+            <span id="rate">--</span>
+          </div>
+          <div class="info-row">
+            <span>Price Impact</span>
+            <span id="priceImpact">--</span>
+          </div>
+          <div class="info-row">
+            <span>Minimum Received</span>
+            <span id="minReceived">--</span>
+          </div>
+          <div class="info-row">
+            <span>Fee</span>
+            <span id="fee">--</span>
+          </div>
+        </div>
+
+
+        <button id="swapButton" disabled>Enter an amount</button>
+      </div>
+    </div>
+
+
+    <div class="notification" id="notification"></div>
+    <script>
+      const AMM_ADDRESS = "0x000000000000d63359f97583372F0a1de7bC76b5";
+      const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+      const COIN_ADDRESS = "0x0000000000009710cd229bF635c4500029651eE8"; // Corrected COIN address
+      const ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
+      const COIN_ID = BigInt(
+        "1363785147236855181740853023229405490284952371986"
+      );
+
+
+      const AMM_ABI = [
+        "function pools(uint256) view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast, uint256 price0CumulativeLast, uint256 price1CumulativeLast, uint256 kLast, uint256 supply)",
+        "function swapExactIn(tuple(uint256 id0, uint256 id1, address token0, address token1, uint96 swapFee) poolKey, uint256 amountIn, uint256 amountOutMin, bool zeroForOne, address to, uint256 deadline) payable returns (uint256 amountOut)",
+      ];
+
+
+      const USDC_ABI = [
+        "function balanceOf(address) view returns (uint256)",
+        "function decimals() view returns (uint8)",
+        "function approve(address, uint256) returns (bool)",
+      ];
+
+
+      const ERC6909_ABI = [
+        "function balanceOf(address owner, uint256 id) view returns (uint256)",
+        "function decimals(uint256 id) view returns (uint8)",
+        "function approve(address spender, uint256 id, uint256 amount) returns (bool)",
+      ];
+
+
+      let provider, signer, account, ammContract, usdcContract, coinContract;
+      let poolReserves = { reserve0: BigInt(0), reserve1: BigInt(0) };
+      let usdcDecimals = 6; // Default USDC decimals
+      let coinDecimals = 18; // Default COIN decimals
+      let currentPool = "ethCoin"; // Default to ETH-COIN pool
+      let isTokensFlipped = false; // Track if tokens are flipped
+
+
+      // Pool configurations
+      const pools = {
+        ethCoin: {
+          id0: 0,
+          id1: COIN_ID,
+          token0: ETH_ADDRESS,
+          token1: COIN_ADDRESS,
+          swapFee: 100, // 1%
+          token0Symbol: "ETH",
+          token1Symbol: "COIN",
+          token0Decimals: 18,
+          token1Decimals: 18,
+        },
+        ethUsdc: {
+          id0: 0,
+          id1: 0,
+          token0: ETH_ADDRESS,
+          token1: USDC_ADDRESS,
+          swapFee: 1, // 0.01%
+          token0Symbol: "ETH",
+          token1Symbol: "USDC",
+          token0Decimals: 18,
+          token1Decimals: 6,
+        },
+      };
+
+
+      window.addEventListener("load", async () => {
+        if (typeof window.ethereum !== "undefined") {
+          try {
+            // Set up initial event listeners for wallet
+            window.ethereum.on("accountsChanged", (accounts) => {
+              if (accounts.length === 0) {
+                // User disconnected their wallet
+                disconnectWallet();
+              } else {
+                // Account changed, reinitialize with new account
+                initializeWallet(accounts[0]);
+              }
+            });
+
+
+            window.ethereum.on("chainChanged", () => {
+              // Reload page on network change
+              window.location.reload();
+            });
+
+
+            // Check if already connected
+            const accounts = await window.ethereum.request({
+              method: "eth_accounts",
+            });
+
+
+            if (accounts.length > 0) {
+              await initializeWallet(accounts[0]);
+            }
+
+
+            // Set up UI event listeners
+            document.getElementById("connectButton").onclick = async () => {
+              try {
+                const accounts = await window.ethereum.request({
+                  method: "eth_requestAccounts",
+                });
+                await initializeWallet(accounts[0]);
+              } catch (err) {
+                notify("Failed to connect wallet");
+                console.error(err);
+              }
+            };
+
+
+            document.getElementById("fromAmount").oninput = handleFromInput;
+            document.getElementById("toAmount").oninput = handleToInput;
+            document.getElementById("swapDirection").onclick = switchTokens;
+            document.getElementById("swapButton").onclick = executeSwap;
+
+
+            // Pool selection listeners
+            document.getElementById("ethCoin").onclick = () =>
+              switchPool("ethCoin");
+            document.getElementById("ethUsdc").onclick = () =>
+              switchPool("ethUsdc");
+          } catch (err) {
+            notify("Error initializing wallet connection");
+            console.error(err);
+          }
+        } else {
+          notify("Please install MetaMask");
+          document.getElementById("connectButton").disabled = true;
+        }
+      });
+
+
+      async function initializeWallet(selectedAccount) {
+        try {
+          account = selectedAccount;
+
+
+          if (window.ethereum) {
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            await window.ethereum.request({ method: "eth_requestAccounts" });
+            signer = provider.getSigner();
+
+
+            ammContract = new ethers.Contract(AMM_ADDRESS, AMM_ABI, signer);
+            usdcContract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
+            coinContract = new ethers.Contract(
+              COIN_ADDRESS,
+              ERC6909_ABI,
+              signer
+            );
+
+
+            // Get USDC decimals
+            usdcDecimals = await usdcContract.decimals();
+            pools.ethUsdc.token1Decimals = usdcDecimals;
+
+
+            // Try to get COIN decimals if the function is available
+            try {
+              coinDecimals = await coinContract.decimals(COIN_ID);
+              pools.ethCoin.token1Decimals = coinDecimals;
+            } catch (err) {
+              console.log("Could not get COIN decimals, using default 18");
+            }
+
+
+            document.getElementById("connectSection").style.display = "none";
+            document.getElementById("swapSection").style.display = "block";
+            document.getElementById("networkDot").classList.add("connected");
+            document.getElementById("networkStatus").textContent = "Connected";
+
+
+            // Reset token flip state
+            isTokensFlipped = false;
+
+
+            // Set default pool info
+            updateUI();
+            await Promise.all([updateBalances(), updatePoolInfo()]);
+            notify("Wallet connected successfully!");
+          } else {
+            throw new Error("MetaMask not installed");
+          }
+        } catch (err) {
+          console.error("Initialization error:", err);
+          notify("Failed to initialize wallet");
+        }
+      }
+
+
+      function disconnectWallet() {
+        provider = null;
+        signer = null;
+        account = null;
+        ammContract = null;
+        usdcContract = null;
+        coinContract = null;
+
+
+        document.getElementById("connectSection").style.display = "block";
+        document.getElementById("swapSection").style.display = "none";
+        document.getElementById("networkDot").classList.remove("connected");
+        document.getElementById("networkStatus").textContent = "Disconnected";
+
+
+        notify("Wallet disconnected");
+      }
+
+
+      async function switchPool(poolType) {
+        if (currentPool === poolType) return;
+
+
+        // Update UI classes
+        document.getElementById(currentPool).classList.remove("active");
+        document.getElementById(poolType).classList.add("active");
+
+
+        // Update current pool
+        currentPool = poolType;
+
+
+        // Clear input fields
+        document.getElementById("fromAmount").value = "";
+        document.getElementById("toAmount").value = "";
+
+
+        // Reset token flip state
+        isTokensFlipped = false;
+
+
+        // Update UI
+        updateUI();
+        await Promise.all([updateBalances(), updatePoolInfo()]);
+      }
+
+
+      function updateUI() {
+        const pool = pools[currentPool];
+
+
+        // Update token displays based on flip state
+        if (isTokensFlipped) {
+          document.getElementById("fromToken").textContent = pool.token1Symbol;
+          document.getElementById("toToken").textContent = pool.token0Symbol;
+        } else {
+          document.getElementById("fromToken").textContent = pool.token0Symbol;
+          document.getElementById("toToken").textContent = pool.token1Symbol;
+        }
+
+
+        // Update fee display
+        const feePercentage = pool.swapFee / 100;
+        document.getElementById("fee").textContent = `${feePercentage}%`;
+
+
+        // Reset other info
+        document.getElementById("rate").textContent = "--";
+        document.getElementById("priceImpact").textContent = "--";
+        document.getElementById("minReceived").textContent = "--";
+      }
+
+
+      async function updateBalances() {
+        if (!account) return;
+
+
+        try {
+          const pool = pools[currentPool];
+          const ethBalance = await provider.getBalance(account);
+
+
+          let token1Balance;
+          if (pool.token1 === USDC_ADDRESS) {
+            token1Balance = await usdcContract.balanceOf(account);
+          } else {
+            // For COIN (ERC6909)
+            token1Balance = await coinContract.balanceOf(account, pool.id1);
+          }
+
+
+          if (isTokensFlipped) {
+            // Flipped tokens
+            document.getElementById(
+              "fromBalance"
+            ).textContent = `${ethers.utils.formatUnits(
+              token1Balance,
+              pool.token1Decimals
+            )} ${pool.token1Symbol}`;
+
+
+            document.getElementById(
+              "toBalance"
+            ).textContent = `${ethers.utils.formatUnits(
+              ethBalance,
+              pool.token0Decimals
+            )} ${pool.token0Symbol}`;
+          } else {
+            // Normal order
+            document.getElementById(
+              "fromBalance"
+            ).textContent = `${ethers.utils.formatUnits(
+              ethBalance,
+              pool.token0Decimals
+            )} ${pool.token0Symbol}`;
+
+
+            document.getElementById(
+              "toBalance"
+            ).textContent = `${ethers.utils.formatUnits(
+              token1Balance,
+              pool.token1Decimals
+            )} ${pool.token1Symbol}`;
+          }
+        } catch (err) {
+          console.error("Error updating balances:", err);
+        }
+      }
+
+
+      async function updatePoolInfo() {
+        try {
+          const pool = pools[currentPool];
+
+
+          let poolKey;
+
+
+          if (pool.token0.toLowerCase() < pool.token1.toLowerCase()) {
+            poolKey = {
+              id0: pool.id0,
+              id1: pool.id1,
+              token0: pool.token0,
+              token1: pool.token1,
+              swapFee: pool.swapFee,
+            };
+          } else {
+            poolKey = {
+              id0: pool.id1,
+              id1: pool.id0,
+              token0: pool.token1,
+              token1: pool.token0,
+              swapFee: pool.swapFee,
+            };
+          }
+
+
+          // Match contract's assembly ordering for poolId
+          const poolId = ethers.utils.keccak256(
+            ethers.utils.defaultAbiCoder.encode(
+              ["address", "uint256", "address", "uint256", "uint96"],
+              [
+                poolKey.token0,
+                poolKey.id0,
+                poolKey.token1,
+                poolKey.id1,
+                poolKey.swapFee,
+              ]
+            )
+          );
+
+
+          const poolData = await ammContract.pools(poolId);
+
+
+          // Check if we need to reorder reserves based on UI display
+          const ethIsToken0 =
+            pool.token0.toLowerCase() === ETH_ADDRESS.toLowerCase();
+          const contractEthIsToken0 =
+            poolKey.token0.toLowerCase() === ETH_ADDRESS.toLowerCase();
+
+
+          if (ethIsToken0 === contractEthIsToken0) {
+            poolReserves.reserve0 = BigInt(poolData.reserve0.toString());
+            poolReserves.reserve1 = BigInt(poolData.reserve1.toString());
+          } else {
+            // Swap the reserves
+            poolReserves.reserve0 = BigInt(poolData.reserve1.toString());
+            poolReserves.reserve1 = BigInt(poolData.reserve0.toString());
+          }
+
+
+          if (poolReserves.reserve0 > 0 && poolReserves.reserve1 > 0) {
+            // Adjusting the rate calculation for correct decimal representation
+            const rate =
+              Number(
+                ethers.utils.formatUnits(
+                  poolReserves.reserve1.toString(),
+                  pool.token1Decimals
+                )
+              ) /
+              Number(
+                ethers.utils.formatUnits(
+                  poolReserves.reserve0.toString(),
+                  pool.token0Decimals
+                )
+              );
+
+
+            if (isTokensFlipped) {
+              document.getElementById("rate").textContent = `1 ${
+                pool.token1Symbol
+              } = ${(1 / rate).toFixed(6)} ${pool.token0Symbol}`;
+            } else {
+              document.getElementById("rate").textContent = `1 ${
+                pool.token0Symbol
+              } = ${rate.toFixed(6)} ${pool.token1Symbol}`;
+            }
+          } else {
+            document.getElementById("rate").textContent =
+              "Pool not initialized";
+          }
+        } catch (err) {
+          console.error("UpdatePoolInfo error:", err);
+          document.getElementById("rate").textContent =
+            "Error fetching pool info";
+        }
+      }
+
+
+      function handleFromInput() {
+        const input = document.getElementById("fromAmount");
+        const value = input.value;
+        const pool = pools[currentPool];
+
+
+        if (!value || isNaN(value) || Number(value) <= 0) {
+          document.getElementById("toAmount").value = "";
+          updateSwapButton();
+          document.getElementById("priceImpact").textContent = "--";
+          document.getElementById("minReceived").textContent = "--";
+          return;
+        }
+
+
+        try {
+          let amountIn, amountOut;
+
+
+          if (isTokensFlipped) {
+            // Token1 to Token0
+            amountIn = ethers.utils.parseUnits(value, pool.token1Decimals);
+            amountOut = calculateAmountOut(
+              amountIn,
+              poolReserves.reserve1,
+              poolReserves.reserve0,
+              pool.swapFee
+            );
+
+
+            if (amountOut === BigInt(0)) {
+              document.getElementById("toAmount").value = "0";
+            } else {
+              document.getElementById("toAmount").value =
+                ethers.utils.formatUnits(
+                  amountOut.toString(),
+                  pool.token0Decimals
+                );
+            }
+          } else {
+            // Token0 to Token1
+            amountIn = ethers.utils.parseUnits(value, pool.token0Decimals);
+            amountOut = calculateAmountOut(
+              amountIn,
+              poolReserves.reserve0,
+              poolReserves.reserve1,
+              pool.swapFee
+            );
+
+
+            if (amountOut === BigInt(0)) {
+              document.getElementById("toAmount").value = "0";
+            } else {
+              document.getElementById("toAmount").value =
+                ethers.utils.formatUnits(
+                  amountOut.toString(),
+                  pool.token1Decimals
+                );
+            }
+          }
+
+
+          updateSwapInfo(amountIn, amountOut);
+          updateSwapButton();
+        } catch (err) {
+          console.error("Input handling error:", err);
+          notify("Error calculating amount");
+        }
+      }
+
+
+      function handleToInput() {
+        const input = document.getElementById("toAmount");
+        const value = input.value;
+        const pool = pools[currentPool];
+
+
+        if (!value || isNaN(value) || Number(value) <= 0) {
+          document.getElementById("fromAmount").value = "";
+          updateSwapButton();
+          document.getElementById("priceImpact").textContent = "--";
+          document.getElementById("minReceived").textContent = "--";
+          return;
+        }
+
+
+        try {
+          let amountOut, amountIn;
+
+
+          if (isTokensFlipped) {
+            // Token1 to Token0
+            amountOut = ethers.utils.parseUnits(value, pool.token0Decimals);
+            amountIn = calculateAmountIn(
+              amountOut,
+              poolReserves.reserve1,
+              poolReserves.reserve0,
+              pool.swapFee
+            );
+
+
+            document.getElementById("fromAmount").value =
+              ethers.utils.formatUnits(
+                amountIn.toString(),
+                pool.token1Decimals
+              );
+          } else {
+            // Token0 to Token1
+            amountOut = ethers.utils.parseUnits(value, pool.token1Decimals);
+            amountIn = calculateAmountIn(
+              amountOut,
+              poolReserves.reserve0,
+              poolReserves.reserve1,
+              pool.swapFee
+            );
+
+
+            document.getElementById("fromAmount").value =
+              ethers.utils.formatUnits(
+                amountIn.toString(),
+                pool.token0Decimals
+              );
+          }
+
+
+          updateSwapInfo(amountIn, amountOut);
+          updateSwapButton();
+        } catch (err) {
+          console.error("Input handling error:", err);
+          notify("Error calculating amount");
+        }
+      }
+
+
+      function calculateAmountOut(amountIn, reserveIn, reserveOut, swapFee) {
+        try {
+          // Ensure all values are BigInt and handle decimals properly
+          const amountInBN = BigInt(amountIn.toString());
+          const reserveInBN = BigInt(reserveIn.toString());
+          const reserveOutBN = BigInt(reserveOut.toString());
+          const feeBps = BigInt(swapFee);
+
+
+          if (reserveInBN === BigInt(0) || reserveOutBN === BigInt(0)) {
+            return BigInt(0);
+          }
+
+
+          // Calculate with fee (10000 basis points = 100%)
+          const amountInWithFee = amountInBN * (BigInt(10000) - feeBps);
+          const numerator = amountInWithFee * reserveOutBN;
+          const denominator = reserveInBN * BigInt(10000) + amountInWithFee;
+
+
+          return numerator / denominator;
+        } catch (err) {
+          console.error("Calculate amount out error:", err);
+          return BigInt(0);
+        }
+      }
+
+
+      function calculateAmountIn(amountOut, reserveIn, reserveOut, swapFee) {
+        try {
+          // Convert all inputs to BigInt
+          const amountOutBN = BigInt(amountOut.toString());
+          const reserveInBN = BigInt(reserveIn.toString());
+          const reserveOutBN = BigInt(reserveOut.toString());
+          const feeBps = BigInt(swapFee);
+
+
+          if (
+            reserveInBN === BigInt(0) ||
+            reserveOutBN === BigInt(0) ||
+            amountOutBN >= reserveOutBN
+          ) {
+            return BigInt(0);
+          }
+
+
+          const numerator = reserveInBN * amountOutBN * BigInt(10000);
+          const denominator =
+            (reserveOutBN - amountOutBN) * (BigInt(10000) - feeBps);
+          return numerator / denominator + BigInt(1);
+        } catch (err) {
+          console.error("Calculate amount in error:", err);
+          return BigInt(0);
+        }
+      }
+
+
+      function updateSwapInfo(amountIn, amountOut) {
+        try {
+          const pool = pools[currentPool];
+
+
+          // Calculate price impact
+          const impact = calculatePriceImpact(amountIn, amountOut);
+          document.getElementById(
+            "priceImpact"
+          ).textContent = `${impact.toFixed(2)}%`;
+
+
+          // Calculate minimum received (0.5% slippage tolerance)
+          const minReceived = (amountOut * BigInt(995)) / BigInt(1000);
+
+
+          let minReceivedSymbol, minReceivedDecimals;
+          if (isTokensFlipped) {
+            minReceivedSymbol = pool.token0Symbol;
+            minReceivedDecimals = pool.token0Decimals;
+          } else {
+            minReceivedSymbol = pool.token1Symbol;
+            minReceivedDecimals = pool.token1Decimals;
+          }
+
+
+          document.getElementById(
+            "minReceived"
+          ).textContent = `${ethers.utils.formatUnits(
+            minReceived.toString(),
+            minReceivedDecimals
+          )} ${minReceivedSymbol}`;
+        } catch (err) {
+          console.error("Update swap info error:", err);
+          document.getElementById("priceImpact").textContent = "--";
+          document.getElementById("minReceived").textContent = "--";
+        }
+      }
+
+
+      function calculatePriceImpact(amountIn, amountOut) {
+        try {
+          const pool = pools[currentPool];
+
+
+          let reserve0, reserve1, inDecimals, outDecimals;
+
+
+          if (isTokensFlipped) {
+            // For flipped tokens (token1 -> token0)
+            reserve0 = poolReserves.reserve1;
+            reserve1 = poolReserves.reserve0;
+            inDecimals = pool.token1Decimals;
+            outDecimals = pool.token0Decimals;
+          } else {
+            // Normal (token0 -> token1)
+            reserve0 = poolReserves.reserve0;
+            reserve1 = poolReserves.reserve1;
+            inDecimals = pool.token0Decimals;
+            outDecimals = pool.token1Decimals;
+          }
+
+
+          // Convert to human-readable numbers for calculation
+          const reserveIn = Number(
+            ethers.utils.formatUnits(reserve0.toString(), inDecimals)
+          );
+          const reserveOut = Number(
+            ethers.utils.formatUnits(reserve1.toString(), outDecimals)
+          );
+
+
+          // Calculate spot price (output per input)
+          const spotPrice = reserveOut / reserveIn;
+
+
+          // Get input/output in numerical format
+          const amountInValue = Number(
+            ethers.utils.formatUnits(amountIn.toString(), inDecimals)
+          );
+          const amountOutValue = Number(
+            ethers.utils.formatUnits(amountOut.toString(), outDecimals)
+          );
+
+
+          // Calculate execution price
+          const executionPrice = amountOutValue / amountInValue;
+
+
+          // Calculate price impact
+          const priceImpact = ((spotPrice - executionPrice) / spotPrice) * 100;
+
+
+          return Math.max(0, priceImpact); // Ensure non-negative
+        } catch (err) {
+          console.error("Price impact calculation error:", err);
+          return 0;
+        }
+      }
+
+
+      function switchTokens() {
+        // Toggle flip state
+        isTokensFlipped = !isTokensFlipped;
+
+
+        // Get current pool
+        const pool = pools[currentPool];
+
+
+        // Swap displayed token values
+        const fromAmount = document.getElementById("fromAmount").value;
+        const toAmount = document.getElementById("toAmount").value;
+
+
+        document.getElementById("fromAmount").value = toAmount;
+        document.getElementById("toAmount").value = fromAmount;
+
+
+        // Update token displays
+        if (isTokensFlipped) {
+          document.getElementById("fromToken").textContent = pool.token1Symbol;
+          document.getElementById("toToken").textContent = pool.token0Symbol;
+        } else {
+          document.getElementById("fromToken").textContent = pool.token0Symbol;
+          document.getElementById("toToken").textContent = pool.token1Symbol;
+        }
+
+
+        // Update balances to reflect the swap
+        updateBalances();
+
+
+        updateSwapButton();
+      }
+
+
+      function updateSwapButton() {
+        const button = document.getElementById("swapButton");
+        const fromAmount = document.getElementById("fromAmount").value;
+        const fromToken = document.getElementById("fromToken").textContent;
+
+
+        if (!fromAmount || isNaN(fromAmount) || Number(fromAmount) <= 0) {
+          button.disabled = true;
+          button.textContent = "Enter an amount";
+          return;
+        }
+
+
+        button.disabled = false;
+        button.textContent = `Swap ${fromToken}`;
+      }
+
+
+      async function executeSwap() {
+        if (!account) return;
+
+
+        try {
+          const pool = pools[currentPool];
+
+
+          // Determine token ordering and values based on pool and flip state
+          let fromToken,
+            toToken,
+            amountIn,
+            amountOutMin,
+            fromDecimals,
+            toDecimals;
+          let zeroForOne,
+            useEthValue = false;
+
+
+          // Set up poolKey with correct token order for contract
+          let poolKey;
+          if (pool.token0.toLowerCase() < pool.token1.toLowerCase()) {
+            poolKey = {
+              id0: pool.id0,
+              id1: pool.id1,
+              token0: pool.token0,
+              token1: pool.token1,
+              swapFee: pool.swapFee,
+            };
+          } else {
+            poolKey = {
+              id0: pool.id1,
+              id1: pool.id0,
+              token0: pool.token1,
+              token1: pool.token0,
+              swapFee: pool.swapFee,
+            };
+          }
+
+
+          // Get input amounts from UI
+          const fromAmountValue = document.getElementById("fromAmount").value;
+          const toAmountValue = document.getElementById("toAmount").value;
+
+
+          if (isTokensFlipped) {
+            // User is inputting token1 and receiving token0
+            fromToken = pool.token1;
+            toToken = pool.token0;
+            fromDecimals = pool.token1Decimals;
+            toDecimals = pool.token0Decimals;
+
+
+            // Determine if ETH is input or output
+            useEthValue = fromToken.toLowerCase() === ETH_ADDRESS.toLowerCase();
+          } else {
+            // User is inputting token0 and receiving token1
+            fromToken = pool.token0;
+            toToken = pool.token1;
+            fromDecimals = pool.token0Decimals;
+            toDecimals = pool.token1Decimals;
+
+
+            // Determine if ETH is input or output
+            useEthValue = fromToken.toLowerCase() === ETH_ADDRESS.toLowerCase();
+          }
+
+
+          // Parse amounts
+          amountIn = ethers.utils.parseUnits(fromAmountValue, fromDecimals);
+          amountOutMin = ethers.utils
+            .parseUnits(toAmountValue, toDecimals)
+            .mul(995)
+            .div(1000);
+
+
+          // Determine zeroForOne parameter based on contract token order and user input direction
+          const contractToken0 = poolKey.token0.toLowerCase();
+          const inputTokenAddress = fromToken.toLowerCase();
+
+
+          zeroForOne = contractToken0 === inputTokenAddress;
+
+
+          // Set deadline
+          const deadline = Math.floor(Date.now() / 1000) + 1200; // 20 minutes
+
+
+          notify("Swapping...");
+
+
+          // Set up transaction settings
+          const txSettings = {
+            gasLimit: 300000,
+          };
+
+
+          // Add value if sending ETH
+          if (useEthValue) {
+            txSettings.value = amountIn;
+          } else if (fromToken === COIN_ADDRESS) {
+            // Approve AMM contract to spend COIN if needed
+            try {
+              const allowance = await coinContract.allowance(
+                account,
+                AMM_ADDRESS,
+                pool.id1
+              );
+              if (BigInt(allowance.toString()) < BigInt(amountIn.toString())) {
+                notify("Approving COIN...");
+                const approveTx = await coinContract.approve(
+                  AMM_ADDRESS,
+                  pool.id1,
+                  amountIn
+                );
+                await approveTx.wait();
+                notify("COIN approved");
+              }
+            } catch (err) {
+              console.log(
+                "Couldn't check/set allowance for COIN, attempting swap anyway"
+              );
+            }
+          } else if (fromToken === USDC_ADDRESS) {
+            // Approve AMM contract to spend USDC if needed
+            const allowance = await usdcContract.allowance(
+              account,
+              AMM_ADDRESS
+            );
+            if (BigInt(allowance.toString()) < BigInt(amountIn.toString())) {
+              notify("Approving USDC...");
+              const approveTx = await usdcContract.approve(
+                AMM_ADDRESS,
+                amountIn
+              );
+              await approveTx.wait();
+              notify("USDC approved");
+            }
+          }
+
+
+          const tx = await ammContract.swapExactIn(
+            poolKey,
+            amountIn,
+            amountOutMin,
+            zeroForOne,
+            account,
+            deadline,
+            txSettings
+          );
+
+
+          notify("Confirming transaction...");
+          await tx.wait();
+          notify("Swap successful");
+
+
+          // Update UI
+          await Promise.all([updateBalances(), updatePoolInfo()]);
+
+
+          document.getElementById("fromAmount").value = "";
+          document.getElementById("toAmount").value = "";
+          updateSwapButton();
+          document.getElementById("priceImpact").textContent = "--";
+          document.getElementById("minReceived").textContent = "--";
+        } catch (err) {
+          console.error("Swap error:", err);
+          notify(
+            "Swap failed: " + (err.reason || err.message || "Unknown error")
+          );
+        }
+      }
+
+
+      function notify(message) {
+        const notification = document.getElementById("notification");
+        notification.textContent = message;
+        notification.classList.add("show");
+        setTimeout(() => notification.classList.remove("show"), 3000);
+      }
+    </script>
+  </body>
+</html>
