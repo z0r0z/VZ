@@ -5,14 +5,14 @@ import "forge-std/Test.sol";
 import "@solady/test/utils/mocks/MockERC20.sol";
 import "@solady/test/utils/mocks/MockERC6909.sol";
 
-import {VZPairs} from "../src/VZPairs.sol";
+import {ZAMM} from "../src/ZAMM.sol";
 
 /// @dev Forked from Zuniswap (https://github.com/Jeiwan/zuniswapv2/blob/main/test/ZuniswapV2Pair.t.sol).
-contract VZPairsTest is Test {
+contract ZAMMTest is Test {
     MockERC20 token0;
     MockERC20 token1;
     MockERC20 ofToken;
-    VZPairs pairs;
+    ZAMM pairs;
     TestUser testUser;
 
     MockERC6909 token6909A;
@@ -21,10 +21,10 @@ contract VZPairsTest is Test {
     uint256 token6909BId;
 
     // Use PoolKey structs with the same variable names
-    VZPairs.PoolKey pair;
-    VZPairs.PoolKey ethPair;
-    VZPairs.PoolKey ofPair;
-    VZPairs.PoolKey erc6909Pair;
+    ZAMM.PoolKey pair;
+    ZAMM.PoolKey ethPair;
+    ZAMM.PoolKey ofPair;
+    ZAMM.PoolKey erc6909Pair;
 
     uint256 pairId;
     uint256 ethPairId;
@@ -56,7 +56,7 @@ contract VZPairsTest is Test {
             : (address(token6909B), address(token6909A), token6909BId, token6909AId);
 
         // Create PoolKey for ERC6909 tokens
-        erc6909Pair = VZPairs.PoolKey({
+        erc6909Pair = ZAMM.PoolKey({
             token0: _token6909A,
             id0: _id6909A,
             token1: _token6909B,
@@ -66,10 +66,10 @@ contract VZPairsTest is Test {
 
         vm.broadcast(address(1));
         // Regular setup
-        pairs = new VZPairs();
+        pairs = new ZAMM();
 
         // Create PoolKey structs using the same variable names as before
-        pair = VZPairs.PoolKey({
+        pair = ZAMM.PoolKey({
             token0: address(token0),
             id0: 0,
             token1: address(token1),
@@ -77,15 +77,10 @@ contract VZPairsTest is Test {
             swapFee: 30
         });
 
-        ethPair = VZPairs.PoolKey({
-            token0: address(0),
-            id0: 0,
-            token1: address(token1),
-            id1: 0,
-            swapFee: 30
-        });
+        ethPair =
+            ZAMM.PoolKey({token0: address(0), id0: 0, token1: address(token1), id1: 0, swapFee: 30});
 
-        ofPair = VZPairs.PoolKey({
+        ofPair = ZAMM.PoolKey({
             token0: address(0),
             id0: 0,
             token1: address(ofToken),
@@ -120,7 +115,7 @@ contract VZPairsTest is Test {
     }
 
     /// @dev Helper function to compute poolId from PoolKey.
-    function computePoolId(VZPairs.PoolKey memory key) internal pure returns (uint256) {
+    function computePoolId(ZAMM.PoolKey memory key) internal pure returns (uint256) {
         return uint256(keccak256(abi.encode(key.token0, key.id0, key.token1, key.id1, key.swapFee)));
     }
 
@@ -813,8 +808,8 @@ contract VZPairsTest is Test {
         }
 
         // Create PoolKey for mixed pair
-        VZPairs.PoolKey memory mixedPairKey =
-            VZPairs.PoolKey({token0: tokenA, id0: idA, token1: tokenB, id1: idB, swapFee: 30});
+        ZAMM.PoolKey memory mixedPairKey =
+            ZAMM.PoolKey({token0: tokenA, id0: idA, token1: tokenB, id1: idB, swapFee: 30});
 
         // Store initial balances
         uint256 initialToken0Balance = token0.balanceOf(address(this));
@@ -906,8 +901,8 @@ contract VZPairsTest is Test {
             tokenB = address(token1);
         }
 
-        VZPairs.PoolKey memory pair1 =
-            VZPairs.PoolKey({token0: tokenA, id0: 0, token1: tokenB, id1: 0, swapFee: 30});
+        ZAMM.PoolKey memory pair1 =
+            ZAMM.PoolKey({token0: tokenA, id0: 0, token1: tokenB, id1: 0, swapFee: 30});
 
         // Initialize pair1
         pairs.deposit(tokenA, 0, 2 ether);
@@ -1107,10 +1102,10 @@ contract VZPairsTest is Test {
     function testSwapExactInETHReverseDirection() public {
         // Create a valid pair with token0 = token1, token1 = ETH
         // First, determine which address is smaller
-        VZPairs.PoolKey memory reversedEthPair;
+        ZAMM.PoolKey memory reversedEthPair;
 
         if (address(token1) < address(0)) {
-            reversedEthPair = VZPairs.PoolKey({
+            reversedEthPair = ZAMM.PoolKey({
                 token0: address(token1),
                 id0: 0,
                 token1: address(0),
@@ -1364,8 +1359,8 @@ contract VZPairsTest is Test {
         }
 
         // Create PoolKey for mixed pair
-        VZPairs.PoolKey memory mixedPairKey =
-            VZPairs.PoolKey({token0: tokenA, id0: idA, token1: tokenB, id1: idB, swapFee: 30});
+        ZAMM.PoolKey memory mixedPairKey =
+            ZAMM.PoolKey({token0: tokenA, id0: idA, token1: tokenB, id1: idB, swapFee: 30});
 
         computePoolId(mixedPairKey);
 
@@ -1393,9 +1388,9 @@ contract VZPairsTest is Test {
 
 contract TestUser {
     uint256 immutable id;
-    VZPairs.PoolKey pair;
+    ZAMM.PoolKey pair;
 
-    constructor(uint256 ID, VZPairs.PoolKey memory _pair) payable {
+    constructor(uint256 ID, ZAMM.PoolKey memory _pair) payable {
         id = ID;
         pair = _pair;
     }
@@ -1410,22 +1405,22 @@ contract TestUser {
         bool ethBased = token0Address_ == address(0);
         if (ethBased) {
             ERC20(token1Address_).approve(pairsAddress_, amount1_);
-            VZPairs(pairsAddress_).deposit{value: amount0_}(token0Address_, 0, amount0_);
-            VZPairs(pairsAddress_).deposit(token1Address_, 0, amount1_);
-            VZPairs(pairsAddress_).initialize(pair, address(this));
+            ZAMM(pairsAddress_).deposit{value: amount0_}(token0Address_, 0, amount0_);
+            ZAMM(pairsAddress_).deposit(token1Address_, 0, amount1_);
+            ZAMM(pairsAddress_).initialize(pair, address(this));
         } else {
             ERC20(token0Address_).approve(pairsAddress_, amount0_);
             ERC20(token1Address_).approve(pairsAddress_, amount1_);
-            VZPairs(pairsAddress_).deposit(token0Address_, 0, amount0_);
-            VZPairs(pairsAddress_).deposit(token1Address_, 0, amount1_);
-            VZPairs(pairsAddress_).initialize(pair, address(this));
+            ZAMM(pairsAddress_).deposit(token0Address_, 0, amount0_);
+            ZAMM(pairsAddress_).deposit(token1Address_, 0, amount1_);
+            ZAMM(pairsAddress_).initialize(pair, address(this));
         }
     }
 
     function removeLiquidity(address payable pairAddress_) public {
-        uint256 liquidity = VZPairs(pairAddress_).balanceOf(address(this), id);
-        VZPairs(pairAddress_).transfer(pairAddress_, id, liquidity);
-        VZPairs(payable(pairAddress_)).burn(pair, address(this));
+        uint256 liquidity = ZAMM(pairAddress_).balanceOf(address(this), id);
+        ZAMM(pairAddress_).transfer(pairAddress_, id, liquidity);
+        ZAMM(payable(pairAddress_)).burn(pair, address(this));
     }
 
     receive() external payable {}
@@ -1438,9 +1433,9 @@ contract Flashloaner {
 
     uint256 immutable id;
 
-    VZPairs.PoolKey pair;
+    ZAMM.PoolKey pair;
 
-    constructor(uint256 ID, VZPairs.PoolKey memory _pair) payable {
+    constructor(uint256 ID, ZAMM.PoolKey memory _pair) payable {
         id = ID;
         pair = _pair;
     }
@@ -1458,7 +1453,7 @@ contract Flashloaner {
             expectedLoanAmount = amount1Out;
         }
 
-        VZPairs(payable(pairsAddress)).swap(
+        ZAMM(payable(pairsAddress)).swap(
             pair, amount0Out, amount1Out, address(this), abi.encode(tokenAddress)
         );
     }
@@ -1471,7 +1466,7 @@ contract Flashloaner {
 
         ERC20(tokenAddress).approve(msg.sender, balance);
 
-        VZPairs(payable(msg.sender)).deposit(tokenAddress, 0, balance);
+        ZAMM(payable(msg.sender)).deposit(tokenAddress, 0, balance);
     }
 }
 

@@ -5,7 +5,7 @@ import "./VZERC6909.sol";
 import "./utils/Math.sol";
 import "./utils/TransferHelper.sol";
 
-contract VZPairs is VZERC6909 {
+contract ZAMM is VZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%.
 
@@ -320,7 +320,7 @@ contract VZPairs is VZERC6909 {
         amount1 = mulDiv(liquidity, balance1, supply); // Using balances ensures pro-rata distribution.
         require(amount0 > 0, InsufficientLiquidityBurned());
         require(amount1 > 0, InsufficientLiquidityBurned());
-        _burn(poolId, liquidity);
+        _burn(address(this), poolId, liquidity);
         unchecked {
             pool.supply -= liquidity;
         }
@@ -505,6 +505,7 @@ contract VZPairs is VZERC6909 {
 
     error Expired();
 
+    /// @dev Exact-in router helper.
     function swapExactIn(
         PoolKey calldata poolKey,
         uint256 amountIn,
@@ -546,6 +547,11 @@ contract VZPairs is VZERC6909 {
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
             _update(poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
+            // Only clear output tokens if they weren't sent back to this contract.
+            if (to != address(this)) {
+                if (amountOut > 0) _clearWithKey(_computeDepositKey(poolKey.token1, poolKey.id1));
+            }
+
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
             amountOut = _getAmountOut(amountIn, reserve1, reserve0, poolKey.swapFee);
@@ -555,10 +561,16 @@ contract VZPairs is VZERC6909 {
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
             _update(poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
 
+            // Only clear output tokens if they weren't sent back to this contract.
+            if (to != address(this)) {
+                if (amountOut > 0) _clearWithKey(_computeDepositKey(poolKey.token0, poolKey.id0));
+            }
+
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
     }
 
+    /// @dev Exact-out router helper.
     function swapExactOut(
         PoolKey calldata poolKey,
         uint256 amountOut,
@@ -594,6 +606,11 @@ contract VZPairs is VZERC6909 {
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
             _update(poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
+            // Only clear output tokens if they weren't sent back to this contract.
+            if (to != address(this)) {
+                if (amountOut > 0) _clearWithKey(_computeDepositKey(poolKey.token1, poolKey.id1));
+            }
+
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
             require(amountOut < reserve0, InsufficientLiquidity());
@@ -613,12 +630,18 @@ contract VZPairs is VZERC6909 {
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
             _update(poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
 
+            // Only clear output tokens if they weren't sent back to this contract.
+            if (to != address(this)) {
+                if (amountOut > 0) _clearWithKey(_computeDepositKey(poolKey.token0, poolKey.id0));
+            }
+
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
     }
 
     // ** ROUTER LIQ
 
+    /// @dev Add-liquidity router helper. Creates new pool if none.
     function addLiquidity(
         PoolKey calldata poolKey,
         uint256 amount0Desired,
@@ -691,6 +714,7 @@ contract VZPairs is VZERC6909 {
         emit Mint(poolId, msg.sender, amount0, amount1);
     }
 
+    /// @dev Remove-liquidity router helper.
     function removeLiquidity(
         PoolKey calldata poolKey,
         uint256 liquidity,
@@ -705,20 +729,24 @@ contract VZPairs is VZERC6909 {
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
             (pool.reserve0, pool.reserve1, pool.supply);
 
-        transferFrom(msg.sender, address(this), poolId, liquidity);
-
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
         amount0 = mulDiv(liquidity, reserve0, supply);
         amount1 = mulDiv(liquidity, reserve1, supply);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
         require(amount1 >= amount1Min, InsufficientOutputAmount());
-        _burn(poolId, liquidity);
+        _burn(msg.sender, poolId, liquidity);
         unchecked {
             pool.supply -= liquidity;
         }
 
         _safeTransfer(poolKey.token0, to, poolKey.id0, amount0);
         _safeTransfer(poolKey.token1, to, poolKey.id1, amount1);
+
+        // Only clear output tokens if they weren't sent back to this contract.
+        if (to != address(this)) {
+            if (amount0 > 0) _clearWithKey(_computeDepositKey(poolKey.token0, poolKey.id0));
+            if (amount1 > 0) _clearWithKey(_computeDepositKey(poolKey.token1, poolKey.id1));
+        }
 
         _update(poolId, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date.
@@ -748,6 +776,40 @@ contract VZPairs is VZERC6909 {
         uint256 numerator = reserveIn * amountOut * 10000;
         uint256 denominator = (reserveOut - amountOut) * (10000 - swapFee);
         return (numerator / denominator) + 1;
+    }
+
+    /// @dev Build user LP balances for given key.
+    function getUserPosition(address user, PoolKey calldata poolKey)
+        public
+        view
+        returns (uint256 poolTokens, uint256 token0Value, uint256 token1Value)
+    {
+        uint256 poolId = _computePoolId(poolKey);
+        Pool storage pool = pools[poolId];
+        poolTokens = balanceOf(user, poolId);
+
+        if (pool.supply != 0) {
+            token0Value = mulDiv(poolTokens, uint256(pool.reserve0), pool.supply);
+            token1Value = mulDiv(poolTokens, uint256(pool.reserve1), pool.supply);
+        }
+    }
+
+    /// @dev Get current spot prices for given key.
+    function getCurrentPrices(PoolKey calldata poolKey)
+        public
+        view
+        returns (uint256 price0, uint256 price1)
+    {
+        uint256 poolId = _computePoolId(poolKey);
+        Pool storage pool = pools[poolId];
+
+        price0 = pool.reserve0 > 0 ? uint256(uqdiv(encode(pool.reserve1), pool.reserve0)) : 0;
+        price1 = pool.reserve1 > 0 ? uint256(uqdiv(encode(pool.reserve0), pool.reserve1)) : 0;
+    }
+
+    /// @dev Calculate pool Id from given key for offchain services.
+    function getPoolId(PoolKey calldata poolKey) public pure returns (uint256 poolId) {
+        return _computePoolId(poolKey);
     }
 }
 

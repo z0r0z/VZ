@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
-/// @notice Highly optimized ERC6909 implementation for VZ Pairs.
+/// @notice Highly optimized ERC6909 implementation for ZAMM.
 /// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
 /// @dev For a better understanding of optimization choices and full documentation, consult Solady ERC6909.
 abstract contract VZERC6909 {
@@ -184,10 +184,10 @@ abstract contract VZERC6909 {
         }
     }
 
-    function _burn(uint256 id, uint256 amount) internal {
+    function _burn(address from, uint256 id, uint256 amount) internal {
         assembly ("memory-safe") {
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
-            mstore(0x14, address())
+            mstore(0x14, from)
             mstore(0x00, id)
             let fromBalanceSlot := keccak256(0x00, 0x40)
             let fromBalance := sload(fromBalanceSlot)
@@ -198,7 +198,7 @@ abstract contract VZERC6909 {
             sstore(fromBalanceSlot, sub(fromBalance, amount))
             mstore(0x00, caller())
             mstore(0x20, amount)
-            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, address())), 0, id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), 0, id)
         }
     }
 }
