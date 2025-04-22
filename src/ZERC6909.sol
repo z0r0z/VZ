@@ -174,13 +174,7 @@ abstract contract ZERC6909 {
             mstore(0x14, to)
             mstore(0x00, id)
             let toBalanceSlot := keccak256(0x00, 0x40)
-            let toBalanceBefore := sload(toBalanceSlot)
-            let toBalanceAfter := add(toBalanceBefore, amount)
-            if lt(toBalanceAfter, toBalanceBefore) {
-                mstore(0x00, 0x89560ca1)
-                revert(0x1c, 0x04)
-            }
-            sstore(toBalanceSlot, toBalanceAfter)
+            sstore(toBalanceSlot, add(sload(toBalanceSlot), amount))
             mstore(0x00, caller())
             mstore(0x20, amount)
             log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, 0, shr(96, shl(96, to)), id)

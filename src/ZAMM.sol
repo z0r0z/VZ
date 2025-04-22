@@ -155,7 +155,7 @@ contract ZAMM is ZERC6909 {
                     unchecked {
                         liquidity = numerator / denominator;
                         if (liquidity > 0) {
-                            _mint(feeTo, poolId, liquidity);
+                            _mint(feeTo, poolId, liquidity); // TODO: reduce?
                         }
                         pool.supply += liquidity;
                     }
@@ -511,8 +511,7 @@ contract ZAMM is ZERC6909 {
 
         liquidity = sqrt(msg.value * liqAmt) - MINIMUM_LIQUIDITY;
         require(liquidity != 0, InsufficientLiquidityMinted());
-        _mint(address(0), poolId, MINIMUM_LIQUIDITY);
-        _mint(liqTo, poolId, liquidity);
+        _initMint(liqTo, poolId, liquidity);
         unchecked {
             pools[poolId].supply = liquidity + MINIMUM_LIQUIDITY;
         }
