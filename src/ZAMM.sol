@@ -414,8 +414,7 @@ contract ZAMM is ZERC6909 {
             require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee());
             liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             require(liquidity != 0, InsufficientLiquidityMinted());
-            _mint(address(0), poolId, MINIMUM_LIQUIDITY);
-            _mint(to, poolId, liquidity);
+            _initMint(to, poolId, liquidity);
             unchecked {
                 pool.supply = liquidity + MINIMUM_LIQUIDITY;
             }

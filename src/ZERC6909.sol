@@ -156,6 +156,18 @@ abstract contract ZERC6909 {
         }
     }
 
+    function _initMint(address to, uint256 id, uint256 amount) internal {
+        assembly ("memory-safe") {
+            mstore(0x20, ERC6909_MASTER_SLOT_SEED)
+            mstore(0x14, to)
+            mstore(0x00, id)
+            sstore(keccak256(0x00, 0x40), amount)
+            mstore(0x00, caller())
+            mstore(0x20, amount)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, 0, shr(96, shl(96, to)), id)
+        }
+    }
+
     function _mint(address to, uint256 id, uint256 amount) internal {
         assembly ("memory-safe") {
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
