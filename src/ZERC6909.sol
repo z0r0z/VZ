@@ -4,7 +4,7 @@ pragma solidity ^0.8.29;
 /// @notice Highly optimized ERC6909 implementation for ZAMM.
 /// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
 /// @dev For a better understanding of optimization choices and full documentation, consult Solady ERC6909.
-abstract contract VZERC6909 {
+abstract contract ZERC6909 {
     uint256 constant TRANSFER_EVENT_SIGNATURE =
         0x1b3d7edb2e9c0b0e7c525b20aaaef0f5940d2ed71663c7d39266ecafac728859;
     uint256 constant OPERATOR_SET_EVENT_SIGNATURE =
@@ -46,11 +46,7 @@ abstract contract VZERC6909 {
         }
     }
 
-    function transfer(address to, uint256 id, uint256 amount)
-        public
-        payable
-        returns (bool result)
-    {
+    function transfer(address to, uint256 id, uint256 amount) public returns (bool result) {
         assembly ("memory-safe") {
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, caller())
@@ -81,7 +77,6 @@ abstract contract VZERC6909 {
 
     function transferFrom(address from, address to, uint256 id, uint256 amount)
         public
-        payable
         returns (bool result)
     {
         assembly ("memory-safe") {
@@ -127,11 +122,7 @@ abstract contract VZERC6909 {
         }
     }
 
-    function approve(address spender, uint256 id, uint256 amount)
-        public
-        payable
-        returns (bool result)
-    {
+    function approve(address spender, uint256 id, uint256 amount) public returns (bool result) {
         assembly ("memory-safe") {
             mstore(0x34, ERC6909_MASTER_SLOT_SEED)
             mstore(0x28, caller())
@@ -145,7 +136,7 @@ abstract contract VZERC6909 {
         }
     }
 
-    function setOperator(address operator, bool approved) public payable returns (bool result) {
+    function setOperator(address operator, bool approved) public returns (bool result) {
         assembly ("memory-safe") {
             let approvedCleaned := iszero(iszero(approved))
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
@@ -184,10 +175,10 @@ abstract contract VZERC6909 {
         }
     }
 
-    function _burn(address from, uint256 id, uint256 amount) internal {
+    function _burn(uint256 id, uint256 amount) internal {
         assembly ("memory-safe") {
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
-            mstore(0x14, from)
+            mstore(0x14, caller())
             mstore(0x00, id)
             let fromBalanceSlot := keccak256(0x00, 0x40)
             let fromBalance := sload(fromBalanceSlot)
@@ -198,7 +189,7 @@ abstract contract VZERC6909 {
             sstore(fromBalanceSlot, sub(fromBalance, amount))
             mstore(0x00, caller())
             mstore(0x20, amount)
-            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), 0, id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, caller())), 0, id)
         }
     }
 }
