@@ -6,6 +6,7 @@ import "./utils/Math.sol";
 import "./utils/TransferHelper.sol";
 
 // maximally simple constant product AMM singleton
+// minted by z0r0z as concentric liquidity backend
 contract ZAMM is ZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%
@@ -46,6 +47,8 @@ contract ZAMM is ZERC6909 {
             tstore(0x929eee149b4bd21268, 0)
         }
     }
+
+    // ** TRANSFER
 
     function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
         if (to == address(this)) {
