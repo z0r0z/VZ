@@ -3,7 +3,6 @@ pragma solidity ^0.8.29;
 
 /// @notice Highly optimized ERC6909 implementation for ZAMM.
 /// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
-/// @dev For a better understanding of optimization choices and full documentation, consult Solady ERC6909.
 abstract contract ZERC6909 {
     uint256 constant TRANSFER_EVENT_SIGNATURE =
         0x1b3d7edb2e9c0b0e7c525b20aaaef0f5940d2ed71663c7d39266ecafac728859;
