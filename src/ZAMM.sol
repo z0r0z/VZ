@@ -473,13 +473,10 @@ contract ZAMM is ZERC6909 {
         public
         returns (uint256 coinId)
     {
-        unchecked {
-            coinId = uint256(
-                keccak256(abi.encodePacked(this.make.selector, msg.sender, block.timestamp))
-            );
-            _initMint(maker, coinId, supply);
-            emit URI(uri, coinId);
-        }
+        coinId =
+            uint256(keccak256(abi.encodePacked(this.make.selector, msg.sender, block.timestamp)));
+        _initMint(maker, coinId, supply);
+        emit URI(uri, coinId);
     }
 
     function makeLiquid(
@@ -495,13 +492,11 @@ contract ZAMM is ZERC6909 {
         require(deadline >= block.timestamp, Expired());
         require(liqAmt <= type(uint256).max - mkrAmt, Overflow());
 
-        unchecked {
-            coinId = uint256(
-                keccak256(abi.encodePacked(this.makeLiquid.selector, msg.sender, block.timestamp))
-            );
-            if (mkrAmt != 0) _initMint(maker, coinId, mkrAmt);
-            emit URI(uri, coinId);
-        }
+        coinId = uint256(
+            keccak256(abi.encodePacked(this.makeLiquid.selector, msg.sender, block.timestamp))
+        );
+        if (mkrAmt != 0) _initMint(maker, coinId, mkrAmt);
+        emit URI(uri, coinId);
 
         PoolKey memory poolKey = PoolKey(0, coinId, address(0), address(this), uint96(swapFee));
 
