@@ -46,7 +46,7 @@ abstract contract ZERC6909 {
         }
     }
 
-    function transfer(address to, uint256 id, uint256 amount) public returns (bool result) {
+    function transfer(address to, uint256 id, uint256 amount) public returns (bool) {
         assembly ("memory-safe") {
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
             mstore(0x14, caller())
@@ -71,7 +71,8 @@ abstract contract ZERC6909 {
             mstore(0x00, caller())
             mstore(0x20, amount)
             log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, caller(), shr(96, shl(96, to)), id)
-            result := 1
+            mstore(0x00, 1)
+            return(0x00, 0x20)
         }
     }
 
