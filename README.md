@@ -2,7 +2,7 @@
 
 Contemporary Uniswap V2 (VZ) Singleton. By [z0r0z](https://x.com/z0r0zzz).
 
-Deployed efficiently to every chain at [``](https://contractscan.xyz/contract/).
+Deployed efficiently to every chain at [`0x0000000000009994A7A9A6Ec18E09EbA245E8410`](https://contractscan.xyz/contract/0x0000000000009994A7A9A6Ec18E09EbA245E8410).
 
 Changes are meant to cause little disruption to the familiar and battle-tested [Uniswap V2 core](https://github.com/Uniswap/v2-core). While also introducing efficiency and optimized patterns the public has otherwise made through opinionated forks. VZ should consolidate, reform and optimize these variations as much as possible to represent a simple and useable VZ.
 
