@@ -5,8 +5,7 @@ import "./ZERC6909.sol";
 import "./utils/Math.sol";
 import "./utils/TransferHelper.sol";
 
-// minimal constant-product AMM ERC6909 singleton
-// made by z0r0z & forked from uniswap version 2
+// maximally simple constant product AMM singleton
 contract ZAMM is ZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%
@@ -51,11 +50,13 @@ contract ZAMM is ZERC6909 {
     function _safeTransfer(address token, address to, uint256 id, uint256 amount) internal {
         if (to == address(this)) {
             assembly ("memory-safe") {
+                let m := mload(0x40)
                 mstore(0x00, caller())
                 mstore(0x20, token)
                 mstore(0x40, id)
                 let slot := keccak256(0x00, 0x60)
                 tstore(slot, add(tload(slot), amount))
+                mstore(0x40, m)
             }
         } else if (token == address(this)) {
             _mint(to, id, amount);
@@ -155,7 +156,7 @@ contract ZAMM is ZERC6909 {
                     unchecked {
                         liquidity = numerator / denominator;
                         if (liquidity > 0) {
-                            _mint(feeTo, poolId, liquidity); // TODO: reduce?
+                            _mint(feeTo, poolId, liquidity);
                         }
                         pool.supply += liquidity;
                     }
@@ -468,7 +469,7 @@ contract ZAMM is ZERC6909 {
 
     event URI(string uri, uint256 indexed coinId);
 
-    function make(address owner, uint256 supply, string calldata uri)
+    function make(address maker, uint256 supply, string calldata uri)
         public
         returns (uint256 coinId)
     {
@@ -476,7 +477,7 @@ contract ZAMM is ZERC6909 {
             coinId = uint256(
                 keccak256(abi.encodePacked(this.make.selector, msg.sender, block.timestamp))
             );
-            _mint(owner, coinId, supply);
+            _initMint(maker, coinId, supply);
             emit URI(uri, coinId);
         }
     }
@@ -492,12 +493,13 @@ contract ZAMM is ZERC6909 {
     ) public payable returns (uint256 coinId, uint256 poolId, uint256 liquidity) {
         require(swapFee <= MAX_FEE, InvalidSwapFee());
         require(deadline >= block.timestamp, Expired());
+        require(liqAmt <= type(uint256).max - mkrAmt, Overflow());
 
         unchecked {
             coinId = uint256(
-                keccak256(abi.encodePacked(this.make.selector, msg.sender, block.timestamp))
+                keccak256(abi.encodePacked(this.makeLiquid.selector, msg.sender, block.timestamp))
             );
-            if (mkrAmt != 0) _mint(maker, coinId, mkrAmt);
+            if (mkrAmt != 0) _initMint(maker, coinId, mkrAmt);
             emit URI(uri, coinId);
         }
 
@@ -525,11 +527,13 @@ contract ZAMM is ZERC6909 {
 
     receive() external payable {
         assembly ("memory-safe") {
+            let m := mload(0x40)
             mstore(0x00, caller())
             mstore(0x20, 0)
             mstore(0x40, 0)
             let slot := keccak256(0x00, 0x60)
             tstore(slot, add(tload(slot), callvalue()))
+            mstore(0x40, m)
         }
     }
 
@@ -537,22 +541,26 @@ contract ZAMM is ZERC6909 {
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
         if (token != address(0)) _safeTransferFrom(token, id, amount);
         assembly ("memory-safe") {
+            let m := mload(0x40)
             mstore(0x00, caller())
             mstore(0x20, token)
             mstore(0x40, id)
             let slot := keccak256(0x00, 0x60)
             tstore(slot, add(tload(slot), amount))
+            mstore(0x40, m)
         }
     }
 
     function _getTransientBalance(address token, uint256 id) internal returns (uint256 bal) {
         assembly ("memory-safe") {
+            let m := mload(0x40)
             mstore(0x00, caller())
             mstore(0x20, token)
             mstore(0x40, id)
             let slot := keccak256(0x00, 0x60)
             bal := tload(slot)
             if bal { tstore(slot, 0) }
+            mstore(0x40, m)
         }
     }
 
@@ -561,6 +569,7 @@ contract ZAMM is ZERC6909 {
         returns (bool credited)
     {
         assembly ("memory-safe") {
+            let m := mload(0x40)
             mstore(0x00, caller())
             mstore(0x20, token)
             mstore(0x40, id)
@@ -570,6 +579,7 @@ contract ZAMM is ZERC6909 {
                 tstore(slot, sub(bal, amount))
                 credited := 1
             }
+            mstore(0x40, m)
         }
     }
 
@@ -579,12 +589,14 @@ contract ZAMM is ZERC6909 {
         returns (uint256 amount)
     {
         assembly ("memory-safe") {
+            let m := mload(0x40)
             mstore(0x00, caller())
             mstore(0x20, token)
             mstore(0x40, id)
             let slot := keccak256(0x00, 0x60)
             amount := tload(slot)
             if amount { tstore(slot, 0) }
+            mstore(0x40, m)
         }
         if (amount != 0) _safeTransfer(token, to, id, amount);
     }
@@ -593,9 +605,9 @@ contract ZAMM is ZERC6909 {
 
     function _getPoolId(PoolKey calldata poolKey) internal pure returns (uint256 poolId) {
         assembly ("memory-safe") {
-            let ptr := mload(0x40)
-            calldatacopy(ptr, poolKey, 0xa0)
-            poolId := keccak256(ptr, 0xa0)
+            let m := mload(0x40)
+            calldatacopy(m, poolKey, 0xa0)
+            poolId := keccak256(m, 0xa0)
         }
     }
 
