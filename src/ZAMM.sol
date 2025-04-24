@@ -485,11 +485,9 @@ contract ZAMM is ZERC6909 {
         uint256 mkrAmt,
         uint256 liqAmt,
         uint256 swapFee,
-        uint256 deadline,
         string calldata uri
     ) public payable returns (uint256 coinId, uint256 poolId, uint256 liquidity) {
         require(swapFee <= MAX_FEE, InvalidSwapFee());
-        require(deadline >= block.timestamp, Expired());
         require(liqAmt <= type(uint256).max - mkrAmt, Overflow());
 
         coinId = uint256(

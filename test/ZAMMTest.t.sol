@@ -957,7 +957,7 @@ contract ZAMMTest is Test {
         address liqTo = bob;
         uint256 mkrAmt = 5e18; // Initial token amount for the maker
         uint256 liqAmt = 20e18; // Amount of token to provide as liquidity
-        uint256 ethAmt = 1e18; // ETH amount to provide as liquidity
+        uint256 ethAmt = 1e18; // ETH amount to provide as liquidityx
         uint96 swapFee = FEE; // Use the same fee as other tests (30 = 0.3%)
         string memory uri = "test-token-uri";
 
@@ -967,9 +967,8 @@ contract ZAMMTest is Test {
         uint256 contractETHBefore = address(zamm).balance;
 
         // Execute makeLiquid with ETH
-        (uint256 coinId, uint256 poolId, uint256 liquidity) = zamm.makeLiquid{value: ethAmt}(
-            maker, liqTo, mkrAmt, liqAmt, swapFee, block.timestamp + 1, uri
-        );
+        (uint256 coinId, uint256 poolId, uint256 liquidity) =
+            zamm.makeLiquid{value: ethAmt}(maker, liqTo, mkrAmt, liqAmt, swapFee, uri);
 
         // Verify token creation
         assertGt(coinId, 0, "Should have created a token ID");
