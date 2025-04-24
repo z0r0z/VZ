@@ -113,6 +113,11 @@ contract ZAMMTest is Test {
         return (reserve0, reserve1, supply);
     }
 
+    function testTransfer() public {
+        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        zamm.transfer(alice, coinId, 0.5 ether);
+    }
+
     function test_InitialLiquidityERC20() public {
         uint256 amount0 = 1e18;
         uint256 amount1 = 4e18;
