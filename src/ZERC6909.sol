@@ -124,7 +124,7 @@ abstract contract ZERC6909 {
         }
     }
 
-    function approve(address spender, uint256 id, uint256 amount) public returns (bool result) {
+    function approve(address spender, uint256 id, uint256 amount) public returns (bool) {
         assembly ("memory-safe") {
             mstore(0x34, ERC6909_MASTER_SLOT_SEED)
             mstore(0x28, caller())
@@ -134,7 +134,8 @@ abstract contract ZERC6909 {
             mstore(0x00, amount)
             log4(0x00, 0x20, APPROVAL_EVENT_SIGNATURE, caller(), shr(96, mload(0x20)), id)
             mstore(0x34, 0x00)
-            result := 1
+            mstore(0x00, 1)
+            return(0x00, 0x20)
         }
     }
 

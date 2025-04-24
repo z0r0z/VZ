@@ -118,6 +118,10 @@ contract ZAMMTest is Test {
         require(zamm.approve(alice, coinId, 0.5 ether));
     }
 
+    function testSetOperator() public {
+        require(zamm.setOperator(address(this), true));
+    }
+
     function testTransfer() public {
         uint256 coinId = zamm.make(address(this), 1 ether, "test");
         require(zamm.transfer(alice, coinId, 0.5 ether));
