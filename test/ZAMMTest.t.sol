@@ -113,6 +113,11 @@ contract ZAMMTest is Test {
         return (reserve0, reserve1, supply);
     }
 
+    function testApprove() public {
+        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        require(zamm.approve(alice, coinId, 0.5 ether));
+    }
+
     function testTransfer() public {
         uint256 coinId = zamm.make(address(this), 1 ether, "test");
         require(zamm.transfer(alice, coinId, 0.5 ether));

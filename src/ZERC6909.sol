@@ -78,7 +78,7 @@ abstract contract ZERC6909 {
 
     function transferFrom(address from, address to, uint256 id, uint256 amount)
         public
-        returns (bool result)
+        returns (bool)
     {
         assembly ("memory-safe") {
             mstore(0x34, ERC6909_MASTER_SLOT_SEED)
@@ -119,7 +119,8 @@ abstract contract ZERC6909 {
             // forgefmt: disable-next-line
             log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), shr(96, shl(96, to)), id)
             mstore(0x34, 0x00)
-            result := 1
+            mstore(0x00, 1)
+            return(0x00, 0x20)
         }
     }
 
