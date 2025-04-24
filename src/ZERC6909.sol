@@ -33,7 +33,7 @@ abstract contract ZERC6909 {
             mstore(0x14, spender)
             mstore(0x00, id)
             amount := sload(keccak256(0x00, 0x54))
-            mstore(0x34, 0x00)
+            mstore(0x34, 0)
         }
     }
 
@@ -118,7 +118,7 @@ abstract contract ZERC6909 {
             mstore(0x20, amount)
             // forgefmt: disable-next-line
             log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), shr(96, shl(96, to)), id)
-            mstore(0x34, 0x00)
+            mstore(0x34, 0)
             mstore(0x00, 1)
             return(0x00, 0x20)
         }
@@ -133,13 +133,13 @@ abstract contract ZERC6909 {
             sstore(keccak256(0x00, 0x54), amount)
             mstore(0x00, amount)
             log4(0x00, 0x20, APPROVAL_EVENT_SIGNATURE, caller(), shr(96, mload(0x20)), id)
-            mstore(0x34, 0x00)
+            mstore(0x34, 0)
             mstore(0x00, 1)
             return(0x00, 0x20)
         }
     }
 
-    function setOperator(address operator, bool approved) public returns (bool result) {
+    function setOperator(address operator, bool approved) public returns (bool) {
         assembly ("memory-safe") {
             let approvedCleaned := iszero(iszero(approved))
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
@@ -148,7 +148,8 @@ abstract contract ZERC6909 {
             sstore(keccak256(0x0c, 0x34), approvedCleaned)
             mstore(0x20, approvedCleaned)
             log3(0x20, 0x20, OPERATOR_SET_EVENT_SIGNATURE, caller(), shr(96, mload(0x0c)))
-            result := 1
+            mstore(0x00, 1)
+            return(0x00, 0x20)
         }
     }
 
