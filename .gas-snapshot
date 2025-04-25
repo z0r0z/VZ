@@ -1,3 +1,8 @@
+ZAMMBenchTest:testV2swapExactIn() (gas: 84068)
+ZAMMBenchTest:testV3SwapExactIn() (gas: 115749)
+ZAMMBenchTest:testV4SwapExactInForUSDC() (gas: 96036)
+ZAMMBenchTest:testZammSwapExactIn() (gas: 43286)
+ZAMMBenchTest:testZammSwapExactInForUSDC() (gas: 54224)
 ZAMMTest:testApprove() (gas: 60252)
 ZAMMTest:testSetOperator() (gas: 30135)
 ZAMMTest:testTransfer() (gas: 61452)
