@@ -312,6 +312,14 @@ contract ZAMMBenchTest is Test {
             0,
             usdcWhale,
             block.timestamp
+        ); // warm up pool
+        zamm.swapExactIn{value: 0.01 ether}(
+            PoolKey(0, 0, address(0), address(usdc), 1),
+            0.01 ether,
+            0,
+            true,
+            usdcWhale,
+            block.timestamp
         );
         vm.stopPrank();
 
