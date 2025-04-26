@@ -300,6 +300,8 @@ contract ZAMMBenchTest is Test {
         erc20.approve(address(zamm), type(uint256).max);
         erc20.approve(address(v2), type(uint256).max);
         erc20.approve(address(v3Router), type(uint256).max);
+        MockERC20(usdc).approve(address(v3Router), type(uint256).max);
+        MockERC20(usdc).approve(address(positionManager), type(uint256).max);
         erc20.approve(address(positionManager), type(uint256).max);
         vm.stopPrank();
 
@@ -360,6 +362,13 @@ contract ZAMMBenchTest is Test {
             address(erc20), 10_000 ether, 0, 0, vitalik, block.timestamp
         );
 
+        vm.startPrank(usdcWhale);
+        MockERC20(usdc).approve(address(v3Router), type(uint256).max);
+        MockERC20(erc20).approve(address(v3Router), type(uint256).max);
+        MockERC20(usdc).approve(address(positionManager), type(uint256).max);
+        MockERC20(erc20).approve(address(positionManager), type(uint256).max);
+        vm.stopPrank();
+
         // Setup V3 pool - first we need to initialize the pool
         uint24 fee = 3000; // 0.3% fee tier
 
@@ -407,6 +416,44 @@ contract ZAMMBenchTest is Test {
             // In case of failure, we'll continue with the test
             // The test may use existing liquidity or fail later if there's no liquidity
         }
+
+        // Now set up the USDC <> ERC20 pool for V3
+        token0 = address(erc20) < usdc ? address(erc20) : usdc;
+        token1 = address(erc20) < usdc ? usdc : address(erc20);
+
+        // Initial price - assuming 1 ERC20 = 1 USDC (for simplicity)
+        sqrtPriceX96 = address(erc20) < usdc
+            ? 79228162514264337593543950336 // price = 1
+            : 79228162514264337593543950336; // price = 1
+
+        vm.prank(usdcWhale);
+        try positionManager.createAndInitializePoolIfNecessary(token0, token1, fee, sqrtPriceX96) {
+            // Pool created successfully
+        } catch {
+            // Pool might already exist, which is fine
+        }
+
+        // Add liquidity to USDC <> ERC20 V3 pool
+        vm.prank(usdcWhale);
+        try positionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                token0: token0,
+                token1: token1,
+                fee: fee,
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                amount0Desired: address(erc20) < usdc ? 10_000 ether : 10_000 * 1e6,
+                amount1Desired: address(erc20) < usdc ? 10_000 * 1e6 : 10_000 ether,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: usdcWhale,
+                deadline: block.timestamp
+            })
+        ) {
+            // Liquidity added successfully
+        } catch {
+            // In case of failure, we'll continue with the test
+        }
     }
 
     function testV2SingleExactInEthForToken() public {
@@ -443,6 +490,30 @@ contract ZAMMBenchTest is Test {
         });
 
         v3Router.exactInputSingle{value: 0.1 ether}(params);
+    }
+
+    function testV3MultihopExactInEthForToken() public {
+        vm.prank(vitalik);
+
+        // For V3 multihop, we need to encode the path: ETH -> ERC20 -> USDC
+        // The format is (token0, fee, token1, fee, token2)
+        bytes memory path = abi.encodePacked(
+            weth, // First token in the path (WETH)
+            uint24(3000), // Fee for first pair (WETH-ERC20)
+            address(erc20), // Second token in the path (ERC20)
+            uint24(3000), // Fee for second pair (ERC20-USDC)
+            usdc // Final token in the path (USDC)
+        );
+
+        IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
+            path: path,
+            recipient: vitalik,
+            deadline: block.timestamp,
+            amountIn: 0.1 ether,
+            amountOutMinimum: 0
+        });
+
+        v3Router.exactInput{value: 0.1 ether}(params);
     }
 
     function testZammSingleExactInEthForToken() public {
