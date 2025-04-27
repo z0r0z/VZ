@@ -365,8 +365,10 @@ contract ZAMM is ZERC6909 {
         uint256 poolId = _getPoolId(poolKey);
         Pool storage pool = pools[poolId];
 
-        (uint112 reserve0, uint112 reserve1, uint256 supply) =
-            (pool.reserve0, pool.reserve1, pool.supply);
+        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+
+        bool feeOn = _mintFee(poolId, reserve0, reserve1);
+        uint256 supply = pool.supply;
 
         if (supply == 0) {
             (amount0, amount1) = (amount0Desired, amount1Desired);
@@ -398,8 +400,6 @@ contract ZAMM is ZERC6909 {
         credited = _useTransientBalance(poolKey.token1, poolKey.id1, amount1);
 
         if (!credited) _safeTransferFrom(poolKey.token1, poolKey.id1, amount1);
-
-        bool feeOn = _mintFee(poolId, reserve0, reserve1);
 
         if (supply == 0) {
             // enforce a single, canonical poolId for any unordered pair:
@@ -445,10 +445,10 @@ contract ZAMM is ZERC6909 {
         require(deadline >= block.timestamp, Expired());
         uint256 poolId = _getPoolId(poolKey);
         Pool storage pool = pools[poolId];
-        (uint112 reserve0, uint112 reserve1, uint256 supply) =
-            (pool.reserve0, pool.reserve1, pool.supply);
+        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         bool feeOn = _mintFee(poolId, reserve0, reserve1);
+        uint256 supply = pool.supply;
         amount0 = mulDiv(liquidity, reserve0, supply);
         amount1 = mulDiv(liquidity, reserve1, supply);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
