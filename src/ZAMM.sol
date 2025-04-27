@@ -455,9 +455,8 @@ contract ZAMM is ZERC6909 {
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         bool feeOn = _mintFee(pool, poolId, reserve0, reserve1);
-        uint256 supply = pool.supply;
-        amount0 = mulDiv(liquidity, reserve0, supply);
-        amount1 = mulDiv(liquidity, reserve1, supply);
+        amount0 = mulDiv(liquidity, reserve0, pool.supply);
+        amount1 = mulDiv(liquidity, reserve1, pool.supply);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
         require(amount1 >= amount1Min, InsufficientOutputAmount());
         _burn(poolId, liquidity);
