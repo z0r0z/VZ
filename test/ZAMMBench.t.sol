@@ -278,7 +278,7 @@ contract ZAMMBenchTest is Test {
     INonfungiblePositionManager constant positionManager =
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
     IV4router constant v4router = IV4router(0x00000000000044a361Ae3cAc094c9D1b14Eece97);
-    IZAMM constant zamm = IZAMM(0x0000000000009994A7A9A6Ec18E09EbA245E8410);
+    IZAMM constant zamm = IZAMM(0x00000000000008882D72EfA6cCE4B6a40b24C860);
 
     address constant usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant usdt = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
