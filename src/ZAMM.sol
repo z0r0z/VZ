@@ -138,11 +138,10 @@ contract ZAMM is ZERC6909 {
     }
 
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
-    function _mintFee(uint256 poolId, uint112 reserve0, uint112 reserve1)
+    function _mintFee(Pool storage pool, uint256 poolId, uint112 reserve0, uint112 reserve1)
         internal
         returns (bool feeOn)
     {
-        Pool storage pool = pools[poolId];
         address feeTo;
         assembly ("memory-safe") {
             feeTo := sload(0x20)
@@ -367,7 +366,7 @@ contract ZAMM is ZERC6909 {
 
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
-        bool feeOn = _mintFee(poolId, reserve0, reserve1);
+        bool feeOn = _mintFee(pool, poolId, reserve0, reserve1);
         uint256 supply = pool.supply;
 
         if (supply == 0) {
@@ -447,7 +446,7 @@ contract ZAMM is ZERC6909 {
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
-        bool feeOn = _mintFee(poolId, reserve0, reserve1);
+        bool feeOn = _mintFee(pool, poolId, reserve0, reserve1);
         uint256 supply = pool.supply;
         amount0 = mulDiv(liquidity, reserve0, supply);
         amount1 = mulDiv(liquidity, reserve1, supply);
@@ -505,16 +504,18 @@ contract ZAMM is ZERC6909 {
             poolId := keccak256(poolKey, 0xa0)
         }
 
-        bool feeOn = _mintFee(poolId, 0, 0);
+        Pool storage pool = pools[poolId];
+
+        bool feeOn = _mintFee(pool, poolId, 0, 0);
 
         liquidity = sqrt(msg.value * liqAmt) - MINIMUM_LIQUIDITY;
         require(liquidity != 0, InsufficientLiquidityMinted());
         _initMint(liqTo, poolId, liquidity);
         unchecked {
-            pools[poolId].supply = liquidity + MINIMUM_LIQUIDITY;
+            pool.supply = liquidity + MINIMUM_LIQUIDITY;
         }
 
-        _update(pools[poolId], poolId, msg.value, liqAmt, 0, 0);
+        _update(pool, poolId, msg.value, liqAmt, 0, 0);
         if (feeOn) pools[poolId].kLast = msg.value * liqAmt;
         emit Mint(poolId, msg.sender, msg.value, liqAmt);
     }
