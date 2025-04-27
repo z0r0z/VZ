@@ -113,6 +113,7 @@ contract ZAMM is ZERC6909 {
 
     // update reserves and, on the first call per block, price accumulators for the given pool `poolId`
     function _update(
+        Pool storage pool,
         uint256 poolId,
         uint256 balance0,
         uint256 balance1,
@@ -120,7 +121,6 @@ contract ZAMM is ZERC6909 {
         uint112 reserve1
     ) internal {
         unchecked {
-            Pool storage pool = pools[poolId];
             require(balance0 <= type(uint112).max, Overflow());
             require(balance1 <= type(uint112).max, Overflow());
             uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
@@ -222,7 +222,7 @@ contract ZAMM is ZERC6909 {
             require(amountOut < reserve1, InsufficientLiquidity());
 
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
-            _update(poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
+            _update(pool, poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
@@ -232,7 +232,7 @@ contract ZAMM is ZERC6909 {
             require(amountOut < reserve0, InsufficientLiquidity());
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
-            _update(poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
+            _update(pool, poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -277,7 +277,7 @@ contract ZAMM is ZERC6909 {
             }
 
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
-            _update(poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
+            _update(pool, poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
@@ -293,7 +293,7 @@ contract ZAMM is ZERC6909 {
             }
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
-            _update(poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
+            _update(pool, poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -340,7 +340,7 @@ contract ZAMM is ZERC6909 {
             balance0Adjusted * balance1Adjusted >= (uint256(reserve0) * reserve1) * 10000 ** 2, K()
         );
 
-        _update(poolId, balance0, balance1, reserve0, reserve1);
+        _update(pool, poolId, balance0, balance1, reserve0, reserve1);
 
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
@@ -429,7 +429,7 @@ contract ZAMM is ZERC6909 {
             pool.supply += liquidity;
         }
 
-        _update(poolId, amount0 + reserve0, amount1 + reserve1, reserve0, reserve1);
+        _update(pool, poolId, amount0 + reserve0, amount1 + reserve1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
         emit Mint(poolId, msg.sender, amount0, amount1);
     }
@@ -462,7 +462,7 @@ contract ZAMM is ZERC6909 {
         _safeTransfer(poolKey.token1, to, poolKey.id1, amount1);
 
         unchecked {
-            _update(poolId, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
+            _update(pool, poolId, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
         }
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date
         emit Burn(poolId, msg.sender, amount0, amount1, to);
@@ -514,7 +514,7 @@ contract ZAMM is ZERC6909 {
             pools[poolId].supply = liquidity + MINIMUM_LIQUIDITY;
         }
 
-        _update(poolId, msg.value, liqAmt, 0, 0);
+        _update(pools[poolId], poolId, msg.value, liqAmt, 0, 0);
         if (feeOn) pools[poolId].kLast = msg.value * liqAmt;
         emit Mint(poolId, msg.sender, msg.value, liqAmt);
     }
