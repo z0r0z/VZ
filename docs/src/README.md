@@ -1,10 +1,10 @@
 # ZAMM
 
-Contemporary Uniswap V2 (VZ) Singleton. By [z0r0z](https://x.com/z0r0zzz).
+Contemporary Passive Liquidity AMM Singleton. By [z0r0z](https://x.com/z0r0zzz).
 
-Deployed efficiently to every chain at [``](https://contractscan.xyz/contract/).
+Deployed efficiently to every chain at [`0x00000000000008882D72EfA6cCE4B6a40b24C860`](https://contractscan.xyz/contract/0x00000000000008882D72EfA6cCE4B6a40b24C860).
 
-Changes are meant to cause little disruption to the familiar and battle-tested [Uniswap V2 core](https://github.com/Uniswap/v2-core). While also introducing efficiency and optimized patterns the public has otherwise made through opinionated forks. VZ should consolidate, reform and optimize these variations as much as possible to represent a simple and useable VZ.
+Changes are meant to cause little disruption to the familiar and battle-tested [Uniswap V2 core](https://github.com/Uniswap/v2-core). While also introducing efficiency and optimized patterns the public has otherwise made through opinionated forks. ZAMM should consolidate, reform and optimize these variations as much as possible to represent a simple and useable singleton.
 
 Changes include the following:
 
@@ -26,7 +26,7 @@ Changes include the following:
 
 ✵ *Solady* most of the things *etc.*
 
-Note: The biggest design difference is that the VZ pairs singleton expects a `pull` pattern of `transferFrom` rather than direct transfers. The `deposit()` function should be called by external routers or locally via `multicall()`. Convenience functions are also provided such as `addLiquidity`, `removeLiquidity`, `swapExactIn` and `swapExactOut` to replicate the classic V2 router dev experience. Enjoy!
+Note: The biggest design difference is that the ZAMM singleton expects a `pull` pattern of `transferFrom` rather than direct transfers. The `deposit()` function should be called by external routers or locally via `multicall()`. Convenience functions are also provided such as `addLiquidity`, `removeLiquidity`, `swapExactIn` and `swapExactOut` to replicate the classic V2 router dev experience. Enjoy!
 
 ## Getting Started
 

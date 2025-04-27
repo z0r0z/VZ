@@ -1,5 +1,5 @@
 # ZERC6909
-[Git Source](https://github.com/z0r0z/VZ/blob/5de7aedefa6cbedd22db6447d26ada8fcbe1d187/src/ZERC6909.sol)
+[Git Source](https://github.com/z0r0z/ZAMM/blob/c21fc3c66faff16115f1a70cca4055641603c62b/src/ZERC6909.sol)
 
 **Author:**
 Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)

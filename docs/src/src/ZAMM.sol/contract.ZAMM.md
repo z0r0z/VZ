@@ -1,5 +1,5 @@
 # ZAMM
-[Git Source](https://github.com/z0r0z/VZ/blob/5de7aedefa6cbedd22db6447d26ada8fcbe1d187/src/ZAMM.sol)
+[Git Source](https://github.com/z0r0z/ZAMM/blob/c21fc3c66faff16115f1a70cca4055641603c62b/src/ZAMM.sol)
 
 **Inherits:**
 [ZERC6909](/src/ZERC6909.sol/abstract.ZERC6909.md)
@@ -61,6 +61,7 @@ constructor() payable;
 
 ```solidity
 function _update(
+    Pool storage pool,
     uint256 poolId,
     uint256 balance0,
     uint256 balance1,
@@ -73,7 +74,7 @@ function _update(
 
 
 ```solidity
-function _mintFee(uint256 poolId, uint112 reserve0, uint112 reserve1)
+function _mintFee(Pool storage pool, uint256 poolId, uint112 reserve0, uint112 reserve1)
     internal
     returns (bool feeOn);
 ```
