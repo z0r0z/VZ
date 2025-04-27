@@ -364,10 +364,18 @@ contract ZAMM is ZERC6909 {
         uint256 poolId = _getPoolId(poolKey);
         Pool storage pool = pools[poolId];
 
-        (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
+        (uint112 reserve0, uint112 reserve1, uint256 supply) =
+            (pool.reserve0, pool.reserve1, pool.supply);
 
-        bool feeOn = _mintFee(pool, poolId, reserve0, reserve1);
-        uint256 supply = pool.supply;
+        bool feeOn;
+        if (supply != 0) {
+            feeOn = _mintFee(pool, poolId, reserve0, reserve1);
+            supply = pool.supply;
+        } else {
+            assembly ("memory-safe") {
+                feeOn := iszero(iszero(sload(0x20)))
+            }
+        }
 
         if (supply == 0) {
             (amount0, amount1) = (amount0Desired, amount1Desired);
@@ -498,10 +506,14 @@ contract ZAMM is ZERC6909 {
         if (mkrAmt != 0) _initMint(maker, coinId, mkrAmt);
         emit URI(uri, coinId);
 
-        PoolKey memory poolKey = PoolKey(0, coinId, address(0), address(this), uint96(swapFee));
-
         assembly ("memory-safe") {
-            poolId := keccak256(poolKey, 0xa0)
+            let m := mload(0x40)
+            mstore(m, 0)
+            mstore(add(m, 0x20), coinId)
+            mstore(add(m, 0x40), 0)
+            mstore(add(m, 0x60), address())
+            mstore(add(m, 0x80), swapFee)
+            poolId := keccak256(m, 0xa0)
         }
 
         Pool storage pool = pools[poolId];
