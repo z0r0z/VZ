@@ -506,7 +506,10 @@ contract ZAMM is ZERC6909 {
 
         Pool storage pool = pools[poolId];
 
-        bool feeOn = _mintFee(pool, poolId, 0, 0);
+        bool feeOn;
+        assembly ("memory-safe") {
+            feeOn := iszero(iszero(sload(0x20)))
+        }
 
         liquidity = sqrt(msg.value * liqAmt) - MINIMUM_LIQUIDITY;
         require(liquidity != 0, InsufficientLiquidityMinted());
@@ -516,7 +519,7 @@ contract ZAMM is ZERC6909 {
         }
 
         _update(pool, poolId, msg.value, liqAmt, 0, 0);
-        if (feeOn) pools[poolId].kLast = msg.value * liqAmt;
+        if (feeOn) pool.kLast = msg.value * liqAmt;
         emit Mint(poolId, msg.sender, msg.value, liqAmt);
     }
 
