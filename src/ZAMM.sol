@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.30;
 
 import "./ZERC6909.sol";
 import "./utils/Math.sol";
@@ -7,10 +7,12 @@ import "./utils/TransferHelper.sol";
 
 // maximally simple constant product AMM singleton
 // minted by z0r0z as concentric liquidity backend
+// with a native coin path for efficient pool swap
 contract ZAMM is ZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%
 
+    uint256 coins;
     mapping(uint256 poolId => Pool) public pools;
 
     struct PoolKey {
@@ -100,6 +102,7 @@ contract ZAMM is ZERC6909 {
         address indexed to
     );
     event Sync(uint256 indexed poolId, uint112 reserve0, uint112 reserve1);
+    event URI(string uri, uint256 indexed coinId);
 
     constructor() payable {
         assembly ("memory-safe") {
@@ -397,7 +400,12 @@ contract ZAMM is ZERC6909 {
 
         if (!credited) {
             if (poolKey.token0 == address(0)) {
-                require(msg.value == amount0, InvalidMsgVal());
+                require(msg.value >= amount0, InvalidMsgVal());
+                if (msg.value > amount0) {
+                    unchecked {
+                        safeTransferETH(msg.sender, msg.value - amount0);
+                    }
+                }
             } else {
                 require(msg.value == 0, InvalidMsgVal());
                 _safeTransferFrom(poolKey.token0, poolKey.id0, amount0);
@@ -405,7 +413,6 @@ contract ZAMM is ZERC6909 {
         }
 
         credited = _useTransientBalance(poolKey.token1, poolKey.id1, amount1);
-
         if (!credited) _safeTransferFrom(poolKey.token1, poolKey.id1, amount1);
 
         if (supply == 0) {
@@ -476,62 +483,15 @@ contract ZAMM is ZERC6909 {
 
     // ** FACTORY
 
-    event URI(string uri, uint256 indexed coinId);
-
     function make(address maker, uint256 supply, string calldata uri)
         public
         returns (uint256 coinId)
     {
-        coinId =
-            uint256(keccak256(abi.encodePacked(this.make.selector, msg.sender, block.timestamp)));
-        _initMint(maker, coinId, supply);
-        emit URI(uri, coinId);
-    }
-
-    function makeLiquid(
-        address maker,
-        address liqTo,
-        uint256 mkrAmt,
-        uint256 liqAmt,
-        uint256 swapFee,
-        string calldata uri
-    ) public payable returns (uint256 coinId, uint256 poolId, uint256 liquidity) {
-        require(swapFee <= MAX_FEE, InvalidSwapFee());
-        require(liqAmt <= type(uint256).max - mkrAmt, Overflow());
-
-        coinId = uint256(
-            keccak256(abi.encodePacked(this.makeLiquid.selector, msg.sender, block.timestamp))
-        );
-        if (mkrAmt != 0) _initMint(maker, coinId, mkrAmt);
-        emit URI(uri, coinId);
-
-        assembly ("memory-safe") {
-            let m := mload(0x40)
-            mstore(m, 0)
-            mstore(add(m, 0x20), coinId)
-            mstore(add(m, 0x40), 0)
-            mstore(add(m, 0x60), address())
-            mstore(add(m, 0x80), swapFee)
-            poolId := keccak256(m, 0xa0)
-        }
-
-        Pool storage pool = pools[poolId];
-
-        bool feeOn;
-        assembly ("memory-safe") {
-            feeOn := iszero(iszero(sload(0x20)))
-        }
-
-        liquidity = sqrt(msg.value * liqAmt) - MINIMUM_LIQUIDITY;
-        require(liquidity != 0, InsufficientLiquidityMinted());
-        _initMint(liqTo, poolId, liquidity);
         unchecked {
-            pool.supply = liquidity + MINIMUM_LIQUIDITY;
+            coinId = ++coins;
+            _initMint(maker, coinId, supply);
+            emit URI(uri, coinId);
         }
-
-        _update(pool, poolId, msg.value, liqAmt, 0, 0);
-        if (feeOn) pool.kLast = msg.value * liqAmt;
-        emit Mint(poolId, msg.sender, msg.value, liqAmt);
     }
 
     // ** TRANSIENT
@@ -664,48 +624,6 @@ contract ZAMM is ZERC6909 {
                 revert(0x1c, 0x04)
             }
             sstore(0x00, feeToSetter)
-        }
-    }
-
-    // ** BATCH
-    function multicall(bytes[] calldata data) public returns (bytes[] memory results) {
-        results = new bytes[](data.length);
-        for (uint256 i; i != data.length; ++i) {
-            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
-            if (!success) {
-                assembly ("memory-safe") {
-                    revert(add(result, 0x20), mload(result))
-                }
-            }
-            results[i] = result;
-        }
-    }
-
-    // ** COMPRESS
-    // Solady (https://github.com/Vectorized/solady/blob/main/src/utils/LibZip)
-    fallback() external payable {
-        assembly ("memory-safe") {
-            if iszero(calldatasize()) { return(calldatasize(), calldatasize()) }
-            let o := 0
-            let f := not(3)
-            for { let i := 0 } lt(i, calldatasize()) {} {
-                let c := byte(0, xor(add(i, f), calldataload(i)))
-                i := add(i, 1)
-                if iszero(c) {
-                    let d := byte(0, xor(add(i, f), calldataload(i)))
-                    i := add(i, 1)
-                    mstore(o, not(0))
-                    if iszero(gt(d, 0x7f)) { calldatacopy(o, calldatasize(), add(d, 1)) }
-                    o := add(o, add(and(d, 0x7f), 1))
-                    continue
-                }
-                mstore8(o, c)
-                o := add(o, 1)
-            }
-            let success := delegatecall(gas(), address(), 0x00, o, codesize(), 0x00)
-            returndatacopy(0x00, 0x00, returndatasize())
-            if iszero(success) { revert(0x00, returndatasize()) }
-            return(0x00, returndatasize())
         }
     }
 }

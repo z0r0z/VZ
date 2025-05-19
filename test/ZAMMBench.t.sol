@@ -225,8 +225,6 @@ interface IZAMM {
         address to,
         uint256 deadline
     ) external payable returns (uint256 amount0, uint256 amount1, uint256 liquidity);
-
-    function multicall(bytes[] calldata data) external returns (bytes[] memory);
 }
 
 type BalanceDelta is int256;
@@ -278,7 +276,8 @@ contract ZAMMBenchTest is Test {
     INonfungiblePositionManager constant positionManager =
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
     IV4router constant v4router = IV4router(0x00000000000044a361Ae3cAc094c9D1b14Eece97);
-    IZAMM constant zamm = IZAMM(0x00000000000008882D72EfA6cCE4B6a40b24C860);
+
+    IZAMM zamm;
 
     address constant usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant usdt = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
@@ -294,6 +293,8 @@ contract ZAMMBenchTest is Test {
         erc20 = new MockERC20("TEST", "TEST", 18);
         erc20.mint(vitalik, 1_000_000 ether);
         erc20.mint(usdcWhale, 1_000_000 ether);
+
+        zamm = IZAMM(payable(address(new ZAMM())));
 
         // Approvals
         vm.startPrank(vitalik);
@@ -562,68 +563,6 @@ contract ZAMMBenchTest is Test {
             usdcWhale,
             block.timestamp
         );
-
-        vm.stopPrank();
-    }
-
-    function testZammMulticallMultihopExactInTokenToEth() public {
-        vm.startPrank(usdcWhale);
-
-        // Amount of USDC to swap
-        uint256 usdcAmount = 1000 * 1e6; // 1000 USDC
-
-        // Calculate expected output for first swap (USDC → ERC20)
-        // Using V2-style constant product formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
-        // For USDC → ERC20 pool with 10,000 USDC and 10 ETH of ERC20
-        uint256 reserveIn = 10_000 * 1e6; // 10,000 USDC
-        uint256 reserveOut = 10 ether; // 10 ERC20
-        uint256 expectedErc20Amount =
-            (usdcAmount * reserveOut * 997) / ((reserveIn * 1000) + (usdcAmount * 997));
-
-        // Calculate expected output for second swap (ERC20 → ETH)
-        // For ERC20 → ETH pool with 10,000 ERC20 and 10 ETH
-        uint256 reserveIn2 = 10_000 ether; // 10,000 ERC20
-        uint256 reserveOut2 = 10 ether; // 10 ETH
-        uint256 expectedEthAmount = (expectedErc20Amount * reserveOut2 * 997)
-            / ((reserveIn2 * 1000) + (expectedErc20Amount * 997));
-
-        // Set minimum expected outputs (with 2% slippage tolerance)
-        uint256 minErc20Amount = expectedErc20Amount * 98 / 100;
-        uint256 minEthAmount = expectedEthAmount * 98 / 100;
-
-        // Create call data for both swaps
-        bytes[] memory calls = new bytes[](2);
-
-        // First hop: USDC → ERC20
-        // Since ETH is not involved here, we need to sort tokens
-        bool zeroForOne1 = usdc < address(erc20);
-        address token0_1 = zeroForOne1 ? usdc : address(erc20);
-        address token1_1 = zeroForOne1 ? address(erc20) : usdc;
-
-        calls[0] = abi.encodeWithSelector(
-            IZAMM.swapExactIn.selector,
-            PoolKey(0, 0, token0_1, token1_1, 100),
-            usdcAmount,
-            minErc20Amount,
-            zeroForOne1,
-            address(zamm), // Send output to ZAMM contract for next swap
-            block.timestamp
-        );
-
-        // Second hop: ERC20 → ETH (address(0))
-        // ETH is always token0 in pair pools
-        calls[1] = abi.encodeWithSelector(
-            IZAMM.swapExactIn.selector,
-            PoolKey(0, 0, address(0), address(erc20), 30),
-            expectedErc20Amount,
-            minEthAmount,
-            false, // ETH is token0, ERC20 is token1, so it's not zeroForOne
-            usdcWhale, // Send final output to the user
-            block.timestamp
-        );
-
-        // Execute both swaps atomically
-        zamm.multicall(calls);
 
         vm.stopPrank();
     }

@@ -1,6 +1,6 @@
 [profile.default]
-solc_version = "0.8.29"
-evm_version = "cancun"
+solc_version = "0.8.30"
+evm_version = "prague"
 
 optimizer = true
 optimizer_runs = 9_999_999
@@ -20,4 +20,4 @@ via_ir = true
 line_length = 100
 
 [rpc_endpoints]
-main = "https://eth.llamarpc.com"
+main = "https://eth-mainnet.public.blastapi.io"

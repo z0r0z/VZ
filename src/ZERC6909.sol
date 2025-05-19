@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.30;
 
 /// @notice Highly optimized ERC6909 implementation for ZAMM.
 /// @author Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
@@ -26,6 +26,7 @@ abstract contract ZERC6909 {
         view
         returns (uint256 amount)
     {
+        if (isOperator(owner, spender)) return type(uint256).max;
         assembly ("memory-safe") {
             mstore(0x34, ERC6909_MASTER_SLOT_SEED)
             mstore(0x28, owner)
