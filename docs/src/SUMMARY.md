@@ -2,10 +2,10 @@
 - [Home](README.md)
 # src
   - [❱ utils](src/utils/README.md)
-    - [min](src/utils/Math.sol/function.min.md)
-    - [sqrt](src/utils/Math.sol/function.sqrt.md)
-    - [mulDiv](src/utils/Math.sol/function.mulDiv.md)
     - [encode](src/utils/Math.sol/function.encode.md)
+    - [mulDiv](src/utils/Math.sol/function.mulDiv.md)
+    - [sqrt](src/utils/Math.sol/function.sqrt.md)
+    - [min](src/utils/Math.sol/function.min.md)
     - [uqdiv](src/utils/Math.sol/function.uqdiv.md)
     - [safeTransferFrom](src/utils/TransferHelper.sol/function.safeTransferFrom.md)
     - [safeTransfer](src/utils/TransferHelper.sol/function.safeTransfer.md)

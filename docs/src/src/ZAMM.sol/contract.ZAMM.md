@@ -1,5 +1,5 @@
 # ZAMM
-[Git Source](https://github.com/z0r0z/ZAMM/blob/bdf5b34ab60ecc6ca2f3ed346976aedaef3e6d12/src/ZAMM.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/acf5c5bb2c446e0854e0315d682019d8a2d87e22/src/ZAMM.sol)
 
 **Inherits:**
 [ZERC6909](/src/ZERC6909.sol/abstract.ZERC6909.md)
@@ -17,6 +17,13 @@ uint256 constant MINIMUM_LIQUIDITY = 1000;
 
 ```solidity
 uint256 constant MAX_FEE = 10000;
+```
+
+
+### coins
+
+```solidity
+uint256 coins;
 ```
 
 
@@ -156,20 +163,6 @@ function removeLiquidity(
 function make(address maker, uint256 supply, string calldata uri) public returns (uint256 coinId);
 ```
 
-### makeLiquid
-
-
-```solidity
-function makeLiquid(
-    address maker,
-    address liqTo,
-    uint256 mkrAmt,
-    uint256 liqAmt,
-    uint256 swapFee,
-    string calldata uri
-) public payable returns (uint256 coinId, uint256 poolId, uint256 liquidity);
-```
-
 ### receive
 
 
@@ -249,20 +242,6 @@ function setFeeTo(address feeTo) public payable;
 
 ```solidity
 function setFeeToSetter(address feeToSetter) public payable;
-```
-
-### multicall
-
-
-```solidity
-function multicall(bytes[] calldata data) public returns (bytes[] memory results);
-```
-
-### fallback
-
-
-```solidity
-fallback() external payable;
 ```
 
 ## Events
