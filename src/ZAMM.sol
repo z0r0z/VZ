@@ -12,6 +12,10 @@ contract ZAMM is ZERC6909 {
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%
 
+    uint256 constant FLAG_BEFORE = 1 << 255;
+    uint256 constant FLAG_AFTER = 1 << 254;
+    uint256 constant _ADDR_MASK = (1 << 160) - 1;
+
     uint256 coins;
     mapping(uint256 poolId => Pool) public pools;
 
@@ -20,7 +24,7 @@ contract ZAMM is ZERC6909 {
         uint256 id1;
         address token0;
         address token1;
-        uint96 swapFee;
+        uint256 feeOrHook; // bps-fee OR flags|address
     }
 
     struct Pool {
@@ -140,6 +144,37 @@ contract ZAMM is ZERC6909 {
         }
     }
 
+    // decode polymorphic `feeOrHook` field
+    function _decode(uint256 v)
+        internal
+        pure
+        returns (uint256 feeBps, address hook, bool pre, bool post)
+    {
+        if (v <= MAX_FEE) {
+            feeBps = v;
+        } else {
+            hook = address(uint160(v));
+            pre = (v & FLAG_BEFORE) != 0;
+            post = (v & FLAG_AFTER) != 0;
+            if (!pre && !post) post = true; // default = after-only
+        }
+    }
+
+    // single after-action dispatcher (unchanged hot path)
+    function _postHook(
+        bytes4 sig,
+        uint256 poolId,
+        address sender,
+        int256 d0,
+        int256 d1,
+        int256 dLiq,
+        bytes memory data,
+        address hook
+    ) internal {
+        if (hook == address(0)) return;
+        IZAMMHook(hook).afterAction(sig, poolId, sender, d0, d1, dLiq, data);
+    }
+
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
     function _mintFee(Pool storage pool, uint256 poolId, uint112 reserve0, uint112 reserve1)
         internal
@@ -192,6 +227,14 @@ contract ZAMM is ZERC6909 {
         require(amountIn != 0, InsufficientInputAmount());
 
         uint256 poolId = _getPoolId(poolKey);
+        (uint256 feeBps, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, bytes(""));
+            if (o != 0) feeBps = o;
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
@@ -218,7 +261,7 @@ contract ZAMM is ZERC6909 {
         }
 
         if (zeroForOne) {
-            amountOut = _getAmountOut(amountIn, reserve0, reserve1, poolKey.swapFee);
+            amountOut = _getAmountOut(amountIn, reserve0, reserve1, feeBps);
             require(amountOut != 0, InsufficientOutputAmount());
             require(amountOut >= amountOutMin, InsufficientOutputAmount());
             require(amountOut < reserve1, InsufficientLiquidity());
@@ -226,15 +269,43 @@ contract ZAMM is ZERC6909 {
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
             _update(pool, poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
+
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
-            amountOut = _getAmountOut(amountIn, reserve1, reserve0, poolKey.swapFee);
+            amountOut = _getAmountOut(amountIn, reserve1, reserve0, feeBps);
             require(amountOut != 0, InsufficientOutputAmount());
             require(amountOut >= amountOutMin, InsufficientOutputAmount());
             require(amountOut < reserve0, InsufficientLiquidity());
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
             _update(pool, poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
+
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -252,13 +323,21 @@ contract ZAMM is ZERC6909 {
         require(amountOut != 0, InsufficientOutputAmount());
 
         uint256 poolId = _getPoolId(poolKey);
+        (uint256 feeBps, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+            if (o != 0) feeBps = o;
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         bool credited;
         if (zeroForOne) {
             require(amountOut < reserve1, InsufficientLiquidity());
-            amountIn = _getAmountIn(amountOut, reserve0, reserve1, poolKey.swapFee);
+            amountIn = _getAmountIn(amountOut, reserve0, reserve1, feeBps);
             require(amountIn <= amountInMax, InsufficientInputAmount());
 
             credited = _useTransientBalance(poolKey.token0, poolKey.id0, amountIn);
@@ -281,10 +360,24 @@ contract ZAMM is ZERC6909 {
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
             _update(pool, poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
+
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
             require(amountOut < reserve0, InsufficientLiquidity());
-            amountIn = _getAmountIn(amountOut, reserve1, reserve0, poolKey.swapFee);
+            amountIn = _getAmountIn(amountOut, reserve1, reserve0, feeBps);
             require(amountIn <= amountInMax, InsufficientInputAmount());
 
             credited = _useTransientBalance(poolKey.token1, poolKey.id1, amountIn);
@@ -296,6 +389,20 @@ contract ZAMM is ZERC6909 {
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
             _update(pool, poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
+
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -312,7 +419,16 @@ contract ZAMM is ZERC6909 {
         bytes calldata data
     ) public lock {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
+
         uint256 poolId = _getPoolId(poolKey);
+        (uint256 feeBps, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, bytes(data));
+            if (o != 0) feeBps = o; // fee override if your hook wants it
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
@@ -336,20 +452,34 @@ contract ZAMM is ZERC6909 {
             amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
         require(amount0In > 0 || amount1In > 0, InsufficientInputAmount());
-        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * poolKey.swapFee);
-        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * poolKey.swapFee);
+        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * feeBps);
+        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * feeBps);
         require(
             balance0Adjusted * balance1Adjusted >= (uint256(reserve0) * reserve1) * 10000 ** 2, K()
         );
 
         _update(pool, poolId, balance0, balance1, reserve0, reserve1);
 
+        /* ── POST hook ── */
+        if (post) {
+            _postHook(
+                msg.sig,
+                poolId,
+                msg.sender,
+                int256(amount0In) - int256(amount0Out),
+                int256(amount1In) - int256(amount1Out),
+                0,
+                bytes(data), // copy calldata to memory once
+                hook
+            );
+        }
+
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
     // ** LIQ MGMT
 
-    error InvalidSwapFee();
+    error InvalidFeeOrHook();
     error InvalidPoolTokens();
     error InsufficientLiquidityMinted();
 
@@ -365,6 +495,13 @@ contract ZAMM is ZERC6909 {
         require(deadline >= block.timestamp, Expired());
 
         uint256 poolId = _getPoolId(poolKey);
+        (, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+        }
+
         Pool storage pool = pools[poolId];
 
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
@@ -429,7 +566,9 @@ contract ZAMM is ZERC6909 {
                 InvalidPoolTokens()
             );
 
-            require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee());
+            uint256 masked = poolKey.feeOrHook & ~(FLAG_BEFORE | FLAG_AFTER);
+            require(poolKey.feeOrHook <= MAX_FEE || (masked & ~_ADDR_MASK) == 0, InvalidFeeOrHook());
+
             liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             require(liquidity != 0, InsufficientLiquidityMinted());
             _initMint(to, poolId, liquidity);
@@ -445,6 +584,21 @@ contract ZAMM is ZERC6909 {
 
         _update(pool, poolId, amount0 + reserve0, amount1 + reserve1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
+
+        /* ── POST hook ── */
+        if (post) {
+            _postHook(
+                msg.sig,
+                poolId,
+                msg.sender,
+                int256(amount0),
+                int256(amount1),
+                int256(liquidity),
+                "",
+                hook
+            );
+        }
+
         emit Mint(poolId, msg.sender, amount0, amount1);
     }
 
@@ -458,6 +612,13 @@ contract ZAMM is ZERC6909 {
     ) public lock returns (uint256 amount0, uint256 amount1) {
         require(deadline >= block.timestamp, Expired());
         uint256 poolId = _getPoolId(poolKey);
+        (, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
@@ -478,6 +639,21 @@ contract ZAMM is ZERC6909 {
             _update(pool, poolId, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
         }
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date
+
+        /* ── POST hook ── */
+        if (post) {
+            _postHook(
+                msg.sig,
+                poolId,
+                msg.sender,
+                -int256(amount0),
+                -int256(amount1),
+                -int256(liquidity),
+                "",
+                hook
+            );
+        }
+
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
 
@@ -582,7 +758,7 @@ contract ZAMM is ZERC6909 {
         }
     }
 
-    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256 amountOut)
@@ -593,7 +769,7 @@ contract ZAMM is ZERC6909 {
         return numerator / denominator;
     }
 
-    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256 amountIn)
@@ -635,6 +811,28 @@ interface IZAMMCallee {
         address sender,
         uint256 amount0,
         uint256 amount1,
+        bytes calldata data
+    ) external;
+}
+
+interface IZAMMHook {
+    /* Optional pre-swap / pre-mint / pre-burn call.
+       May revert or return a feeBps override (0 = keep as-is). */
+    function beforeAction(
+        bytes4 sig, // msg.sig of kernel entry
+        uint256 poolId,
+        address sender,
+        bytes calldata data // "" for exactIn/Out & liquidity fns, user data for swap(bytes)
+    ) external returns (uint256 feeBps);
+
+    /* Runs after reserves committed. */
+    function afterAction(
+        bytes4 sig,
+        uint256 poolId,
+        address sender,
+        int256 d0,
+        int256 d1,
+        int256 dLiq,
         bytes calldata data
     ) external;
 }

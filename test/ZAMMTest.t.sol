@@ -25,8 +25,8 @@ contract ZAMMTest is Test {
 
     uint256 constant INITIAL_SUPPLY = 1000e18;
     uint256 constant MINIMUM_LIQUIDITY = 1000;
-    uint96 constant FEE = 30; // 0.3%
-    uint96 constant SWAP_FEE = 30; // 0.3%
+    uint256 constant FEE = 30; // 0.3%
+    uint256 constant SWAP_FEE = 30; // 0.3%
 
     function setUp() public {
         // Deploy the tokens
@@ -85,7 +85,7 @@ contract ZAMMTest is Test {
     }
 
     // Helper function to create pool keys for different token combinations
-    function _createERC20PoolKey(address tokenFirst, address tokenSecond, uint96 swapFee)
+    function _createERC20PoolKey(address tokenFirst, address tokenSecond, uint256 swapFee)
         internal
         pure
         returns (ZAMM.PoolKey memory)
@@ -93,17 +93,18 @@ contract ZAMMTest is Test {
         (address tokenMin, address tokenMax) =
             tokenFirst < tokenSecond ? (tokenFirst, tokenSecond) : (tokenSecond, tokenFirst);
 
-        return ZAMM.PoolKey({id0: 0, id1: 0, token0: tokenMin, token1: tokenMax, swapFee: swapFee});
+        return
+            ZAMM.PoolKey({id0: 0, id1: 0, token0: tokenMin, token1: tokenMax, feeOrHook: swapFee});
     }
 
-    function _createERC6909PoolKey(address token, uint256 id0, uint256 id1, uint96 swapFee)
+    function _createERC6909PoolKey(address token, uint256 id0, uint256 id1, uint256 swapFee)
         internal
         pure
         returns (ZAMM.PoolKey memory)
     {
         require(id0 < id1, "Invalid token IDs order");
 
-        return ZAMM.PoolKey({id0: id0, id1: id1, token0: token, token1: token, swapFee: swapFee});
+        return ZAMM.PoolKey({id0: id0, id1: id1, token0: token, token1: token, feeOrHook: swapFee});
     }
 
     // Helper function to get pool information
@@ -440,7 +441,7 @@ contract ZAMMTest is Test {
         poolKey.token1 = address(token6909);
         poolKey.id0 = tokenId1;
         poolKey.id1 = tokenId2;
-        poolKey.swapFee = FEE;
+        poolKey.feeOrHook = FEE;
 
         // Get pool ID
         uint256 poolId = _getPoolId(poolKey);
@@ -751,7 +752,8 @@ contract ZAMMTest is Test {
         // 3) plan to borrow 1 A (slot 0)
         uint256 borrowed = 1e18;
         uint256 denom = 10_000;
-        uint256 repayAmt = (borrowed * denom + (denom - key.swapFee) - 1) / (denom - key.swapFee);
+        uint256 repayAmt =
+            (borrowed * denom + (denom - key.feeOrHook) - 1) / (denom - key.feeOrHook);
 
         // 4) FUND the receiver with exactly repayAmt of *token0*
         MockERC20(key.token0).mint(address(recv), repayAmt);
@@ -790,7 +792,7 @@ contract ZAMMTest is Test {
         }
     }
 
-    function _getAmountOut(uint256 amountIn, uint112 reserveIn, uint112 reserveOut, uint96 swapFee)
+    function _getAmountOut(uint256 amountIn, uint112 reserveIn, uint112 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256)
@@ -801,7 +803,7 @@ contract ZAMMTest is Test {
         return numerator / denominator;
     }
 
-    function _getAmountIn(uint256 amountOut, uint112 reserveIn, uint112 reserveOut, uint96 swapFee)
+    function _getAmountIn(uint256 amountOut, uint112 reserveIn, uint112 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256)
@@ -814,7 +816,7 @@ contract ZAMMTest is Test {
     /// @dev Compute the same poolId for a PoolKey that lives in memory.
     function _getPoolId(ZAMM.PoolKey memory poolKey) internal pure returns (uint256 pid) {
         assembly ("memory-safe") {
-            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,swapFee) = 0xa0 bytes
+            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,feeOrHook) = 0xa0 bytes
             pid := keccak256(poolKey, 0xa0)
         }
     }
@@ -846,7 +848,7 @@ contract ReentrantRemove {
     /// @dev Compute the same poolId for a PoolKey that lives in memory.
     function _getPoolId(ZAMM.PoolKey memory poolKey) internal pure returns (uint256 pid) {
         assembly ("memory-safe") {
-            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,swapFee) = 0xa0 bytes
+            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,feeOrHook) = 0xa0 bytes
             pid := keccak256(poolKey, 0xa0)
         }
     }
@@ -890,7 +892,7 @@ contract FlashReceiver {
         // repay slot0 if we borrowed it
         if (a0Out > 0) {
             // compute the exact repayAmt (ceiling)
-            uint256 repay0 = (a0Out * denom + (denom - pk.swapFee) - 1) / (denom - pk.swapFee);
+            uint256 repay0 = (a0Out * denom + (denom - pk.feeOrHook) - 1) / (denom - pk.feeOrHook);
 
             // 1) deposit into the pair’s transient slot to satisfy the invariant
             zamm.deposit(pk.token0, pk.id0, repay0);
@@ -902,7 +904,7 @@ contract FlashReceiver {
 
         // same logic if you ever borrow slot1
         if (a1Out > 0) {
-            uint256 repay1 = (a1Out * denom + (denom - pk.swapFee) - 1) / (denom - pk.swapFee);
+            uint256 repay1 = (a1Out * denom + (denom - pk.feeOrHook) - 1) / (denom - pk.feeOrHook);
             zamm.deposit(pk.token1, pk.id1, repay1);
             MockERC20(pk.token1).transfer(tx.origin, a1Out);
         }
