@@ -9,13 +9,16 @@ import "./utils/TransferHelper.sol";
 // minted by z0r0z as concentric liquidity backend
 // with a native coin path for efficient pool swap
 contract ZAMM is ZERC6909 {
+    // constants
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%
 
+    // - hook flags
     uint256 constant FLAG_BEFORE = 1 << 255;
     uint256 constant FLAG_AFTER = 1 << 254;
-    uint256 constant _ADDR_MASK = (1 << 160) - 1;
+    uint256 constant ADDR_MASK = (1 << 160) - 1;
 
+    // storage
     uint256 coins;
     mapping(uint256 poolId => Pool) public pools;
 
@@ -160,7 +163,7 @@ contract ZAMM is ZERC6909 {
         }
     }
 
-    // single after-action dispatcher (unchanged hot path)
+    // dispatch after-action hook
     function _postHook(
         bytes4 sig,
         uint256 poolId,
@@ -231,7 +234,7 @@ contract ZAMM is ZERC6909 {
 
         /* ── BEFORE hook ── */
         if (pre) {
-            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, bytes(""));
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
             if (o != 0) feeBps = o;
         }
 
@@ -425,8 +428,8 @@ contract ZAMM is ZERC6909 {
 
         /* ── BEFORE hook ── */
         if (pre) {
-            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, bytes(data));
-            if (o != 0) feeBps = o; // fee override if your hook wants it
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, data);
+            if (o != 0) feeBps = o;
         }
 
         Pool storage pool = pools[poolId];
@@ -469,7 +472,7 @@ contract ZAMM is ZERC6909 {
                 int256(amount0In) - int256(amount0Out),
                 int256(amount1In) - int256(amount1Out),
                 0,
-                bytes(data), // copy calldata to memory once
+                data,
                 hook
             );
         }
@@ -567,7 +570,7 @@ contract ZAMM is ZERC6909 {
             );
 
             uint256 masked = poolKey.feeOrHook & ~(FLAG_BEFORE | FLAG_AFTER);
-            require(poolKey.feeOrHook <= MAX_FEE || (masked & ~_ADDR_MASK) == 0, InvalidFeeOrHook());
+            require(poolKey.feeOrHook <= MAX_FEE || (masked & ~ADDR_MASK) == 0, InvalidFeeOrHook());
 
             liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             require(liquidity != 0, InsufficientLiquidityMinted());
@@ -815,9 +818,10 @@ interface IZAMMCallee {
     ) external;
 }
 
+// minimal ZAMM hook interface
 interface IZAMMHook {
-    /* Optional pre-swap / pre-mint / pre-burn call.
-       May revert or return a feeBps override (0 = keep as-is). */
+    /// @dev Optional pre-swap / pre-mint / pre-burn call.
+    /// May revert or return a feeBps override (0 = keep as-is).
     function beforeAction(
         bytes4 sig, // msg.sig of kernel entry
         uint256 poolId,
@@ -825,7 +829,7 @@ interface IZAMMHook {
         bytes calldata data // "" for exactIn/Out & liquidity fns, user data for swap(bytes)
     ) external returns (uint256 feeBps);
 
-    /* Runs after reserves committed. */
+    /// @dev Runs after reserves committed.
     function afterAction(
         bytes4 sig,
         uint256 poolId,
