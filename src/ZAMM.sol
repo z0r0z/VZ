@@ -19,7 +19,6 @@ contract ZAMM is ZERC6909 {
     uint256 constant ADDR_MASK = (1 << 160) - 1;
 
     // storage
-    uint256 coins;
     mapping(uint256 poolId => Pool) public pools;
 
     struct PoolKey {
@@ -109,7 +108,6 @@ contract ZAMM is ZERC6909 {
         address indexed to
     );
     event Sync(uint256 indexed poolId, uint112 reserve0, uint112 reserve1);
-    event URI(string uri, uint256 indexed coinId);
 
     constructor() payable {
         assembly ("memory-safe") {
@@ -662,6 +660,10 @@ contract ZAMM is ZERC6909 {
 
     // ** FACTORY
 
+    event URI(string uri, uint256 indexed coinId);
+
+    uint256 coins;
+
     function make(address maker, uint256 supply, string calldata uri)
         public
         returns (uint256 coinId)
@@ -671,6 +673,166 @@ contract ZAMM is ZERC6909 {
             _initMint(maker, coinId, supply);
             emit URI(uri, coinId);
         }
+    }
+
+    // ** TIMELOCK
+
+    event Lock(address indexed sender, address indexed to, bytes32 indexed lockHash);
+
+    mapping(bytes32 lockHash => uint256 deadline) public lockups;
+
+    error Pending();
+
+    function lockup(address token, address to, uint256 id, uint256 amount, uint256 deadline)
+        public
+        payable
+        lock
+        returns (bytes32 lockHash)
+    {
+        require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
+        if (token != address(0)) _safeTransferFrom(token, id, amount);
+
+        lockHash = keccak256(abi.encodePacked(token, to, id, amount, deadline));
+        require(lockups[lockHash] == 0, Pending());
+
+        lockups[lockHash] = deadline;
+
+        emit Lock(msg.sender, to, lockHash);
+    }
+
+    function unlock(address token, address to, uint256 id, uint256 amount, uint256 deadline)
+        public
+        lock
+    {
+        bytes32 lockHash = keccak256(abi.encodePacked(token, to, id, amount, deadline));
+
+        uint256 due = lockups[lockHash];
+        require(due != 0, Unauthorized());
+        require(block.timestamp >= due, Pending());
+
+        delete lockups[lockHash];
+
+        _safeTransfer(token, to, id, amount);
+    }
+
+    // ** ORDERBOOK
+
+    event Order(address indexed maker, bytes32 indexed orderHash);
+    event Fill(address indexed taker, bytes32 indexed orderHash);
+    event Cancel(address indexed maker, bytes32 indexed orderHash);
+
+    mapping(bytes32 => uint256) public orders; // always set to 1
+
+    function makeOrder(
+        address assetIn,
+        uint256 idIn,
+        uint256 amtIn, // maker sells
+        address assetOut,
+        uint256 idOut,
+        uint256 amtOut, // desired asset
+        uint256 deadline
+    ) public payable lock returns (bytes32 orderHash) {
+        // escrow ETH only if it is the sell-asset
+        require(msg.value == (assetIn == address(0) ? amtIn : 0), InvalidMsgVal());
+
+        orderHash = keccak256(
+            abi.encodePacked(msg.sender, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
+        );
+        require(orders[orderHash] == 0, Pending()); // fresh hash
+        orders[orderHash] = 1; // flag slot
+
+        emit Order(msg.sender, orderHash);
+    }
+
+    function cancelOrder(
+        address assetIn,
+        uint256 idIn,
+        uint256 amtIn,
+        address assetOut,
+        uint256 idOut,
+        uint256 amtOut,
+        uint256 deadline
+    ) public lock {
+        bytes32 orderHash = keccak256(
+            abi.encodePacked(msg.sender, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
+        );
+        require(orders[orderHash] != 0, Unauthorized()); // must exist
+        delete orders[orderHash]; // refund slot gas
+
+        // refund ETH if it was escrowed
+        if (assetIn == address(0)) safeTransferETH(msg.sender, amtIn);
+
+        emit Cancel(msg.sender, orderHash);
+    }
+
+    function fillOrder(
+        address maker,
+        address assetIn,
+        uint256 idIn,
+        uint256 amtIn, // maker leg
+        address assetOut,
+        uint256 idOut,
+        uint256 amtOut, // taker payment
+        uint256 deadline
+    ) public payable lock {
+        bytes32 orderHash = keccak256(
+            abi.encodePacked(maker, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
+        );
+        require(orders[orderHash] != 0, Unauthorized()); // live
+        require(block.timestamp <= deadline, Expired());
+
+        /*──── taker → maker : assetOut ────*/
+        if (assetOut == address(this)) {
+            // internal coin
+            _burn(idOut, amtOut);
+            _mint(maker, idOut, amtOut);
+        } else if (assetOut == address(0)) {
+            // ETH
+            require(msg.value == amtOut, InvalidMsgVal());
+            safeTransferETH(maker, amtOut);
+        } else if (idOut == 0) {
+            // ERC-20
+            safeTransferFrom(assetOut, msg.sender, maker, amtOut);
+        } else {
+            // external ERC-6909
+            ZERC6909(assetOut).transferFrom(msg.sender, maker, idOut, amtOut);
+        }
+
+        /*──── maker → taker : assetIn ────*/
+        if (assetIn == address(this)) {
+            // internal coin
+            _burnFrom(maker, idIn, amtIn);
+            _mint(msg.sender, idIn, amtIn);
+        } else if (assetIn == address(0)) {
+            // escrowed ETH
+            safeTransferETH(msg.sender, amtIn);
+        } else if (idIn == 0) {
+            // ERC-20
+            safeTransferFrom(assetIn, maker, msg.sender, amtIn);
+        } else {
+            // external ERC-6909
+            ZERC6909(assetIn).transferFrom(maker, msg.sender, idIn, amtIn);
+        }
+
+        delete orders[orderHash]; // close order
+        emit Fill(msg.sender, orderHash);
+    }
+
+    /*──────────────── helper : burn from arbitrary owner ──*/
+    function _burnFrom(address from, uint256 id, uint256 amt) internal {
+        // balances mapping layout: mapping(address => mapping(uint256 => uint256))
+        assembly ("memory-safe") {
+            mstore(0x00, from)
+            mstore(0x20, id)
+            let slot := keccak256(0x00, 0x40)
+            let bal := sload(slot)
+            if lt(bal, amt) {
+                mstore(0x00, 0x49940b9c)
+                revert(0x1c, 0x04)
+            } // InsufficientBalance()
+            sstore(slot, sub(bal, amt))
+        }
+        // totalSupply restored by _mint on the opposite leg
     }
 
     // ** TRANSIENT
