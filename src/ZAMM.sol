@@ -687,11 +687,11 @@ contract ZAMM is ZERC6909 {
 
     event Lock(address indexed sender, address indexed to, bytes32 indexed lockHash);
 
-    mapping(bytes32 lockHash => uint256 deadline) public lockups;
+    mapping(bytes32 lockHash => uint256 unlockTime) public lockups;
 
     error Pending();
 
-    function lockup(address token, address to, uint256 id, uint256 amount, uint256 deadline)
+    function lockup(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
         public
         payable
         lock
@@ -700,22 +700,22 @@ contract ZAMM is ZERC6909 {
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
         if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
 
-        lockHash = keccak256(abi.encodePacked(token, to, id, amount, deadline));
+        lockHash = keccak256(abi.encodePacked(token, to, id, amount, unlockTime));
         require(lockups[lockHash] == 0, Pending());
 
-        lockups[lockHash] = deadline;
+        lockups[lockHash] = unlockTime;
 
         emit Lock(msg.sender, to, lockHash);
     }
 
-    function unlock(address token, address to, uint256 id, uint256 amount, uint256 deadline)
+    function unlock(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
         public
         lock
     {
-        bytes32 lockHash = keccak256(abi.encodePacked(token, to, id, amount, deadline));
+        bytes32 lockHash = keccak256(abi.encodePacked(token, to, id, amount, unlockTime));
 
         require(lockups[lockHash] != 0, Unauthorized());
-        require(block.timestamp >= deadline, Pending());
+        require(block.timestamp >= unlockTime, Pending());
 
         delete lockups[lockHash];
 
