@@ -789,16 +789,20 @@ contract ZAMM is ZERC6909 {
         require(block.timestamp <= deadline, Expired());
 
         /*──── taker → maker : assetOut ────*/
-        if (assetOut == address(this)) {
-            _burn(msg.sender, idOut, amtOut);
-            _mint(maker, idOut, amtOut);
-        } else if (assetOut == address(0)) {
-            require(msg.value == amtOut, InvalidMsgVal());
-            safeTransferETH(maker, amtOut);
-        } else if (idOut == 0) {
-            safeTransferFrom(assetOut, msg.sender, maker, amtOut);
+        if (!_useTransientBalance(assetOut, idOut, amtOut)) {
+            if (assetOut == address(this)) {
+                _burn(msg.sender, idOut, amtOut);
+                _mint(maker, idOut, amtOut);
+            } else if (assetOut == address(0)) {
+                require(msg.value == amtOut, InvalidMsgVal());
+                safeTransferETH(maker, amtOut);
+            } else if (idOut == 0) {
+                safeTransferFrom(assetOut, msg.sender, maker, amtOut);
+            } else {
+                ZERC6909(assetOut).transferFrom(msg.sender, maker, idOut, amtOut);
+            }
         } else {
-            ZERC6909(assetOut).transferFrom(msg.sender, maker, idOut, amtOut);
+            require(msg.value == 0, InvalidMsgVal());
         }
 
         /*──── maker → taker : assetIn ────*/
