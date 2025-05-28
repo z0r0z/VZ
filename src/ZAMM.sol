@@ -80,13 +80,15 @@ contract ZAMM is ZERC6909 {
         }
     }
 
-    function _safeTransferFrom(address token, uint256 id, uint256 amount) internal {
+    function _safeTransferFrom(address token, address from, address to, uint256 id, uint256 amount)
+        internal
+    {
         if (token == address(this)) {
-            _burn(id, amount);
+            _burn(from, id, amount);
         } else if (id == 0) {
-            safeTransferFrom(token, amount);
+            safeTransferFrom(token, from, to, amount);
         } else {
-            ZERC6909(token).transferFrom(msg.sender, address(this), id, amount);
+            ZERC6909(token).transferFrom(from, to, id, amount);
         }
     }
 
@@ -253,11 +255,13 @@ contract ZAMM is ZERC6909 {
                     require(msg.value == amountIn, InvalidMsgVal());
                 } else {
                     require(msg.value == 0, InvalidMsgVal());
-                    _safeTransferFrom(poolKey.token0, poolKey.id0, amountIn);
+                    _safeTransferFrom(
+                        poolKey.token0, msg.sender, address(this), poolKey.id0, amountIn
+                    );
                 }
             } else {
                 require(msg.value == 0, InvalidMsgVal());
-                _safeTransferFrom(poolKey.token1, poolKey.id1, amountIn);
+                _safeTransferFrom(poolKey.token1, msg.sender, address(this), poolKey.id1, amountIn);
             }
         }
 
@@ -354,7 +358,9 @@ contract ZAMM is ZERC6909 {
                     }
                 } else {
                     require(msg.value == 0, InvalidMsgVal());
-                    _safeTransferFrom(poolKey.token0, poolKey.id0, amountIn);
+                    _safeTransferFrom(
+                        poolKey.token0, msg.sender, address(this), poolKey.id0, amountIn
+                    );
                 }
             }
 
@@ -385,7 +391,7 @@ contract ZAMM is ZERC6909 {
 
             if (!credited) {
                 require(msg.value == 0, InvalidMsgVal());
-                _safeTransferFrom(poolKey.token1, poolKey.id1, amountIn);
+                _safeTransferFrom(poolKey.token1, msg.sender, address(this), poolKey.id1, amountIn);
             }
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
@@ -546,12 +552,14 @@ contract ZAMM is ZERC6909 {
                 }
             } else {
                 require(msg.value == 0, InvalidMsgVal());
-                _safeTransferFrom(poolKey.token0, poolKey.id0, amount0);
+                _safeTransferFrom(poolKey.token0, msg.sender, address(this), poolKey.id0, amount0);
             }
         }
 
         credited = _useTransientBalance(poolKey.token1, poolKey.id1, amount1);
-        if (!credited) _safeTransferFrom(poolKey.token1, poolKey.id1, amount1);
+        if (!credited) {
+            _safeTransferFrom(poolKey.token1, msg.sender, address(this), poolKey.id1, amount1);
+        }
 
         if (supply == 0) {
             // enforce a single, canonical poolId for any unordered pair:
@@ -628,7 +636,7 @@ contract ZAMM is ZERC6909 {
         amount1 = mulDiv(liquidity, reserve1, pool.supply);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
         require(amount1 >= amount1Min, InsufficientOutputAmount());
-        _burn(poolId, liquidity);
+        _burn(msg.sender, poolId, liquidity);
         unchecked {
             pool.supply -= liquidity;
         }
@@ -690,7 +698,7 @@ contract ZAMM is ZERC6909 {
         returns (bytes32 lockHash)
     {
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
-        if (token != address(0)) _safeTransferFrom(token, id, amount);
+        if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
 
         lockHash = keccak256(abi.encodePacked(token, to, id, amount, deadline));
         require(lockups[lockHash] == 0, Pending());
@@ -706,9 +714,8 @@ contract ZAMM is ZERC6909 {
     {
         bytes32 lockHash = keccak256(abi.encodePacked(token, to, id, amount, deadline));
 
-        uint256 due = lockups[lockHash];
-        require(due != 0, Unauthorized());
-        require(block.timestamp >= due, Pending());
+        require(lockups[lockHash] != 0, Unauthorized());
+        require(block.timestamp >= deadline, Pending());
 
         delete lockups[lockHash];
 
@@ -721,7 +728,7 @@ contract ZAMM is ZERC6909 {
     event Fill(address indexed taker, bytes32 indexed orderHash);
     event Cancel(address indexed maker, bytes32 indexed orderHash);
 
-    mapping(bytes32 => uint256) public orders; // always set to 1
+    mapping(bytes32 orderHash => uint256 deadline) public orders;
 
     function makeOrder(
         address assetIn,
@@ -738,8 +745,8 @@ contract ZAMM is ZERC6909 {
         orderHash = keccak256(
             abi.encodePacked(msg.sender, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
         );
-        require(orders[orderHash] == 0, Pending()); // fresh hash
-        orders[orderHash] = 1; // flag slot
+        require(orders[orderHash] == 0, Pending());
+        orders[orderHash] = deadline;
 
         emit Order(msg.sender, orderHash);
     }
@@ -756,8 +763,8 @@ contract ZAMM is ZERC6909 {
         bytes32 orderHash = keccak256(
             abi.encodePacked(msg.sender, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
         );
-        require(orders[orderHash] != 0, Unauthorized()); // must exist
-        delete orders[orderHash]; // refund slot gas
+        require(orders[orderHash] != 0, Unauthorized());
+        delete orders[orderHash];
 
         // refund ETH if it was escrowed
         if (assetIn == address(0)) safeTransferETH(msg.sender, amtIn);
@@ -778,61 +785,36 @@ contract ZAMM is ZERC6909 {
         bytes32 orderHash = keccak256(
             abi.encodePacked(maker, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
         );
-        require(orders[orderHash] != 0, Unauthorized()); // live
+        require(orders[orderHash] != 0, Unauthorized());
         require(block.timestamp <= deadline, Expired());
 
         /*──── taker → maker : assetOut ────*/
         if (assetOut == address(this)) {
-            // internal coin
-            _burn(idOut, amtOut);
+            _burn(msg.sender, idOut, amtOut);
             _mint(maker, idOut, amtOut);
         } else if (assetOut == address(0)) {
-            // ETH
             require(msg.value == amtOut, InvalidMsgVal());
             safeTransferETH(maker, amtOut);
         } else if (idOut == 0) {
-            // ERC-20
             safeTransferFrom(assetOut, msg.sender, maker, amtOut);
         } else {
-            // external ERC-6909
             ZERC6909(assetOut).transferFrom(msg.sender, maker, idOut, amtOut);
         }
 
         /*──── maker → taker : assetIn ────*/
         if (assetIn == address(this)) {
-            // internal coin
-            _burnFrom(maker, idIn, amtIn);
+            _burn(maker, idIn, amtIn);
             _mint(msg.sender, idIn, amtIn);
         } else if (assetIn == address(0)) {
-            // escrowed ETH
             safeTransferETH(msg.sender, amtIn);
         } else if (idIn == 0) {
-            // ERC-20
             safeTransferFrom(assetIn, maker, msg.sender, amtIn);
         } else {
-            // external ERC-6909
             ZERC6909(assetIn).transferFrom(maker, msg.sender, idIn, amtIn);
         }
 
-        delete orders[orderHash]; // close order
+        delete orders[orderHash];
         emit Fill(msg.sender, orderHash);
-    }
-
-    /*──────────────── helper : burn from arbitrary owner ──*/
-    function _burnFrom(address from, uint256 id, uint256 amt) internal {
-        // balances mapping layout: mapping(address => mapping(uint256 => uint256))
-        assembly ("memory-safe") {
-            mstore(0x00, from)
-            mstore(0x20, id)
-            let slot := keccak256(0x00, 0x40)
-            let bal := sload(slot)
-            if lt(bal, amt) {
-                mstore(0x00, 0x49940b9c)
-                revert(0x1c, 0x04)
-            } // InsufficientBalance()
-            sstore(slot, sub(bal, amt))
-        }
-        // totalSupply restored by _mint on the opposite leg
     }
 
     // ** TRANSIENT
@@ -851,7 +833,7 @@ contract ZAMM is ZERC6909 {
 
     function deposit(address token, uint256 id, uint256 amount) public payable {
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
-        if (token != address(0)) _safeTransferFrom(token, id, amount);
+        if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
         assembly ("memory-safe") {
             let m := mload(0x40)
             mstore(0x00, caller())
