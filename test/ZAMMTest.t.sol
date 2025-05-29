@@ -115,7 +115,7 @@ contract ZAMMTest is Test {
     }
 
     function testApprove() public {
-        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        uint256 coinId = zamm.coin(address(this), 1 ether, "test");
         require(zamm.approve(alice, coinId, 0.5 ether));
     }
 
@@ -124,12 +124,12 @@ contract ZAMMTest is Test {
     }
 
     function testTransfer() public {
-        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        uint256 coinId = zamm.coin(address(this), 1 ether, "test");
         require(zamm.transfer(alice, coinId, 0.5 ether));
     }
 
     function testTransferFrom() public {
-        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        uint256 coinId = zamm.coin(address(this), 1 ether, "test");
         zamm.setOperator(address(this), true);
         require(zamm.transferFrom(address(this), alice, coinId, 0.5 ether));
     }

@@ -672,13 +672,13 @@ contract ZAMM is ZERC6909 {
 
     uint256 coins;
 
-    function make(address maker, uint256 supply, string calldata uri)
+    function coin(address creator, uint256 supply, string calldata uri)
         public
         returns (uint256 coinId)
     {
         unchecked {
             coinId = ++coins;
-            _initMint(maker, coinId, supply);
+            _initMint(creator, coinId, supply);
             emit URI(uri, coinId);
         }
     }
@@ -700,7 +700,7 @@ contract ZAMM is ZERC6909 {
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
         if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
 
-        lockHash = keccak256(abi.encodePacked(token, to, id, amount, unlockTime));
+        lockHash = keccak256(abi.encode(token, to, id, amount, unlockTime));
         require(lockups[lockHash] == 0, Pending());
 
         lockups[lockHash] = unlockTime;
@@ -712,7 +712,7 @@ contract ZAMM is ZERC6909 {
         public
         lock
     {
-        bytes32 lockHash = keccak256(abi.encodePacked(token, to, id, amount, unlockTime));
+        bytes32 lockHash = keccak256(abi.encode(token, to, id, amount, unlockTime));
 
         require(lockups[lockHash] != 0, Unauthorized());
         require(block.timestamp >= unlockTime, Pending());
@@ -724,101 +724,166 @@ contract ZAMM is ZERC6909 {
 
     // ** ORDERBOOK
 
-    event Order(address indexed maker, bytes32 indexed orderHash);
+    event Make(address indexed maker, bytes32 indexed orderHash);
     event Fill(address indexed taker, bytes32 indexed orderHash);
     event Cancel(address indexed maker, bytes32 indexed orderHash);
 
-    mapping(bytes32 orderHash => uint256 deadline) public orders;
+    mapping(bytes32 orderHash => Order) public orders;
 
-    function makeOrder(
-        address assetIn,
-        uint256 idIn,
-        uint256 amtIn, // maker sells
-        address assetOut,
-        uint256 idOut,
-        uint256 amtOut, // desired asset
-        uint256 deadline
-    ) public payable lock returns (bytes32 orderHash) {
-        // escrow ETH only if it is the sell-asset
-        require(msg.value == (assetIn == address(0) ? amtIn : 0), InvalidMsgVal());
+    error BadSize();
+    error Overfill();
 
-        orderHash = keccak256(
-            abi.encodePacked(msg.sender, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
-        );
-        require(orders[orderHash] == 0, Pending());
-        orders[orderHash] = deadline;
-
-        emit Order(msg.sender, orderHash);
+    struct Order {
+        bool partialFill;
+        uint56 deadline;
+        uint96 inDone; // maker leg already delivered (tokenIn)
+        uint96 outDone; // taker payment already paid (tokenOut)
     }
 
-    function cancelOrder(
-        address assetIn,
+    /*════════════════ maker: create order ════════════════*/
+    function makeOrder(
+        address tokenIn,
         uint256 idIn,
-        uint256 amtIn,
-        address assetOut,
+        uint96 amtIn, // maker sells
+        address tokenOut,
         uint256 idOut,
-        uint256 amtOut,
-        uint256 deadline
+        uint96 amtOut, // desired asset
+        uint56 deadline,
+        bool partialFill
+    ) public payable lock returns (bytes32 orderHash) {
+        require(deadline > block.timestamp, Expired());
+        // escrow ETH only if the sell-asset is ETH
+        require(msg.value == (tokenIn == address(0) ? amtIn : 0), InvalidMsgVal());
+
+        orderHash = keccak256(
+            abi.encode(
+                msg.sender, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill
+            )
+        );
+        require(orders[orderHash].deadline == 0, Pending());
+
+        orders[orderHash] = Order(partialFill, deadline, 0, 0);
+
+        emit Make(msg.sender, orderHash);
+    }
+
+    /*════════════ taker: fill order ══════════════════════*/
+    function fillOrder(
+        address maker,
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn, // full maker leg
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut, // full taker payment
+        uint56 deadline,
+        bool partialFill,
+        uint96 fillPart // 0 = “take remainder” (only for partial fills)
+    ) public payable lock {
+        if (tokenOut != address(0)) require(msg.value == 0, InvalidMsgVal());
+
+        bytes32 orderHash = keccak256(
+            abi.encode(maker, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill)
+        );
+
+        Order storage order = orders[orderHash];
+        require(order.deadline != 0, Unauthorized());
+        require(block.timestamp <= order.deadline, Expired());
+
+        uint96 sliceOut;
+        uint96 sliceIn;
+
+        if (partialFill) {
+            sliceOut = (fillPart == 0) ? amtOut - order.outDone : fillPart;
+            unchecked {
+                require(sliceOut != 0 && order.outDone + sliceOut <= amtOut, Overfill());
+
+                sliceIn =
+                    (fillPart == 0) ? amtIn - order.inDone : uint96(mulDiv(amtIn, sliceOut, amtOut));
+
+                require(sliceIn != 0, BadSize());
+
+                order.outDone += sliceOut;
+                order.inDone += sliceIn;
+            }
+
+            _payOut(tokenOut, idOut, sliceOut, maker);
+            _payIn(tokenIn, idIn, sliceIn, maker);
+
+            if (order.outDone == amtOut) {
+                delete orders[orderHash];
+            }
+        } else {
+            /*── static “fill-all” path ───────────────────────*/
+            require(fillPart == 0 || fillPart == amtOut, BadSize());
+
+            _payOut(tokenOut, idOut, amtOut, maker);
+            _payIn(tokenIn, idIn, amtIn, maker);
+
+            delete orders[orderHash];
+        }
+
+        emit Fill(msg.sender, orderHash);
+    }
+
+    /*════════════ maker: cancel order ════════════════════*/
+    function cancelOrder(
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn,
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut,
+        uint56 deadline,
+        bool partialFill
     ) public lock {
         bytes32 orderHash = keccak256(
-            abi.encodePacked(msg.sender, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
+            abi.encode(
+                msg.sender, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill
+            )
         );
-        require(orders[orderHash] != 0, Unauthorized());
+
+        Order memory order = orders[orderHash];
+        require(order.deadline != 0, Unauthorized());
+
         delete orders[orderHash];
 
-        // refund ETH if it was escrowed
-        if (assetIn == address(0)) safeTransferETH(msg.sender, amtIn);
+        if (partialFill) amtIn -= order.inDone; // account for unspent ETH escrow
+        if (amtIn != 0) if (tokenIn == address(0)) safeTransferETH(msg.sender, amtIn);
 
         emit Cancel(msg.sender, orderHash);
     }
 
-    function fillOrder(
-        address maker,
-        address assetIn,
-        uint256 idIn,
-        uint256 amtIn, // maker leg
-        address assetOut,
-        uint256 idOut,
-        uint256 amtOut, // taker payment
-        uint256 deadline
-    ) public payable lock {
-        bytes32 orderHash = keccak256(
-            abi.encodePacked(maker, assetIn, idIn, amtIn, assetOut, idOut, amtOut, deadline)
-        );
-        require(orders[orderHash] != 0, Unauthorized());
-        require(block.timestamp <= deadline, Expired());
-
-        /*──── taker → maker : assetOut ────*/
-        if (!_useTransientBalance(assetOut, idOut, amtOut)) {
-            if (assetOut == address(this)) {
-                _burn(msg.sender, idOut, amtOut);
-                _mint(maker, idOut, amtOut);
-            } else if (assetOut == address(0)) {
-                require(msg.value == amtOut, InvalidMsgVal());
-                safeTransferETH(maker, amtOut);
-            } else if (idOut == 0) {
-                safeTransferFrom(assetOut, msg.sender, maker, amtOut);
-            } else {
-                ZERC6909(assetOut).transferFrom(msg.sender, maker, idOut, amtOut);
-            }
-        } else {
+    /*──────── internal transfer helpers ────────*/
+    function _payOut(address token, uint256 id, uint96 amt, address to) internal {
+        if (_useTransientBalance(token, id, amt)) {
             require(msg.value == 0, InvalidMsgVal());
+            return;
         }
-
-        /*──── maker → taker : assetIn ────*/
-        if (assetIn == address(this)) {
-            _burn(maker, idIn, amtIn);
-            _mint(msg.sender, idIn, amtIn);
-        } else if (assetIn == address(0)) {
-            safeTransferETH(msg.sender, amtIn);
-        } else if (idIn == 0) {
-            safeTransferFrom(assetIn, maker, msg.sender, amtIn);
+        if (token == address(this)) {
+            _burn(msg.sender, id, amt);
+            _mint(to, id, amt);
+        } else if (token == address(0)) {
+            require(msg.value == amt, InvalidMsgVal());
+            safeTransferETH(to, amt);
+        } else if (id == 0) {
+            safeTransferFrom(token, msg.sender, to, amt);
         } else {
-            ZERC6909(assetIn).transferFrom(maker, msg.sender, idIn, amtIn);
+            ZERC6909(token).transferFrom(msg.sender, to, id, amt);
         }
+    }
 
-        delete orders[orderHash];
-        emit Fill(msg.sender, orderHash);
+    function _payIn(address token, uint256 id, uint96 amt, address from) internal {
+        if (token == address(this)) {
+            _burn(from, id, amt);
+            _mint(msg.sender, id, amt);
+        } else if (token == address(0)) {
+            safeTransferETH(msg.sender, amt);
+        } else if (id == 0) {
+            safeTransferFrom(token, from, msg.sender, amt);
+        } else {
+            ZERC6909(token).transferFrom(from, msg.sender, id, amt);
+        }
     }
 
     // ** TRANSIENT
