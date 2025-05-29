@@ -121,7 +121,7 @@ contract ZAMM is ZERC6909 {
 
     error Overflow();
 
-    // update reserves and, on the first call per block, price accumulators for the given pool `poolId`
+    // update reserves and, on the first call per block, price accumulators for the given `poolId`
     function _update(
         Pool storage pool,
         uint256 poolId,
@@ -731,7 +731,6 @@ contract ZAMM is ZERC6909 {
     mapping(bytes32 orderHash => Order) public orders;
 
     error BadSize();
-    error Overfill();
 
     struct Order {
         bool partialFill;
@@ -796,7 +795,7 @@ contract ZAMM is ZERC6909 {
         if (partialFill) {
             sliceOut = (fillPart == 0) ? amtOut - order.outDone : fillPart;
             unchecked {
-                require(sliceOut != 0 && order.outDone + sliceOut <= amtOut, Overfill());
+                require(sliceOut != 0 && order.outDone + sliceOut <= amtOut, Overflow());
 
                 sliceIn =
                     (fillPart == 0) ? amtIn - order.inDone : uint96(mulDiv(amtIn, sliceOut, amtOut));
