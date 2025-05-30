@@ -783,6 +783,11 @@ contract ZAMM is ZERC6909 {
     ) public payable lock {
         if (tokenOut != address(0)) require(msg.value == 0, InvalidMsgVal());
 
+        // ensure non-partial callers only use fillPart==0 or fillPart==amtOut
+        if (!partialFill) {
+            require(fillPart == 0 || fillPart == amtOut, BadSize());
+        }
+
         bytes32 orderHash = keccak256(
             abi.encode(maker, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill)
         );
@@ -791,35 +796,37 @@ contract ZAMM is ZERC6909 {
         require(order.deadline != 0, Unauthorized());
         require(block.timestamp <= order.deadline, Expired());
 
-        uint96 sliceOut;
-        uint96 sliceIn;
+        // pull old cumulative fills
+        uint96 oldIn = order.inDone;
+        uint96 oldOut = order.outDone;
 
-        if (partialFill) {
-            sliceOut = (fillPart == 0) ? amtOut - order.outDone : fillPart;
+        // compute how much to fill this call
+        uint96 sliceOut = partialFill ? (fillPart == 0 ? amtOut - oldOut : fillPart) : amtOut;
+        require(sliceOut != 0 && oldOut + sliceOut <= amtOut, Overflow());
 
-            require(sliceOut != 0 && order.outDone + sliceOut <= amtOut, Overflow());
+        uint96 sliceIn = partialFill
+            ? (fillPart == 0 ? amtIn - oldIn : uint96(mulDiv(amtIn, sliceOut, amtOut)))
+            : amtIn;
+        require(sliceIn != 0, BadSize());
 
-            sliceIn =
-                (fillPart == 0) ? amtIn - order.inDone : uint96(mulDiv(amtIn, sliceOut, amtOut));
+        // new cumulative totals
+        uint96 newOutDone = oldOut + sliceOut;
+        uint96 newInDone = oldIn + sliceIn;
 
-            require(sliceIn != 0, BadSize());
+        // single SSTORE of all four fields
+        orders[orderHash] = Order({
+            partialFill: order.partialFill,
+            deadline: order.deadline,
+            inDone: newInDone,
+            outDone: newOutDone
+        });
 
-            order.outDone += sliceOut;
-            order.inDone += sliceIn;
+        // do the transfers
+        _payOut(tokenOut, idOut, sliceOut, maker);
+        _payIn(tokenIn, idIn, sliceIn, maker);
 
-            _payOut(tokenOut, idOut, sliceOut, maker);
-            _payIn(tokenIn, idIn, sliceIn, maker);
-
-            if (order.outDone == amtOut) {
-                delete orders[orderHash];
-            }
-        } else {
-            /*── static “fill-all” path ───────────────────────*/
-            require(fillPart == 0 || fillPart == amtOut, BadSize());
-
-            _payOut(tokenOut, idOut, amtOut, maker);
-            _payIn(tokenIn, idIn, amtIn, maker);
-
+        // if fully filled, clean up
+        if (newOutDone == amtOut) {
             delete orders[orderHash];
         }
 
