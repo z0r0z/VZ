@@ -3,12 +3,14 @@ pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 import "@solady/test/utils/mocks/MockERC20.sol";
+import "@solady/test/utils/mocks/MockERC721.sol";
 import {ZAMM} from "../src/ZAMM.sol";
 
 contract ZAMMOrderbookTest is Test {
     ZAMM zamm;
     MockERC20 A;
     MockERC20 B;
+    MockERC721 NFT;
     address taker = makeAddr("taker");
     address unauthorized = makeAddr("unauth");
 
@@ -17,6 +19,7 @@ contract ZAMMOrderbookTest is Test {
         zamm = new ZAMM();
         A = new MockERC20("A", "A", 18);
         B = new MockERC20("B", "B", 18);
+        NFT = new MockERC721();
 
         // fund & approve maker (this)
         A.mint(address(this), 1_000e18);
@@ -24,6 +27,9 @@ contract ZAMMOrderbookTest is Test {
         A.approve(address(zamm), type(uint256).max);
         B.approve(address(zamm), type(uint256).max);
         vm.deal(address(this), 5 ether);
+
+        // mint NFT
+        NFT.mint(address(this), 123);
 
         // fund & approve taker
         vm.startPrank(taker);
@@ -209,6 +215,146 @@ contract ZAMMOrderbookTest is Test {
         // LP burned, A received
         assertEq(zamm.balanceOf(address(this), lpId), 0);
         assertEq(A.balanceOf(address(this)), preA + amtOut);
+    }
+
+    function testSellERC721ForERC20() public {
+        NFT.setApprovalForAll(address(zamm), true);
+
+        // 2) maker posts an order: sell NFT#123 for 50 A
+        uint96 nftId = 123;
+        uint96 wantAmt = 50e18;
+        uint56 deadline = uint56(block.timestamp + 1);
+
+        bytes32 h = zamm.makeOrder(
+            address(NFT), // tokenIn = the ERC-721 contract
+            0, // idIn = 0 ⇒ triggers ERC-721 path
+            nftId, // amtIn = tokenId
+            address(A), // tokenOut = ERC-20
+            0,
+            wantAmt,
+            deadline,
+            false // no partial fills
+        );
+
+        // 3) taker fills the order
+        uint256 makerBeforeA = A.balanceOf(address(this));
+
+        A.mint(taker, 100e18);
+        vm.prank(taker);
+        A.approve(address(zamm), type(uint256).max);
+        vm.prank(taker);
+        zamm.fillOrder(
+            address(this), // maker
+            address(NFT),
+            0,
+            nftId,
+            address(A),
+            0,
+            wantAmt,
+            deadline,
+            false,
+            0
+        );
+
+        // 4) assert: maker got the A, taker got the NFT, order cleared
+        assertEq(A.balanceOf(address(this)), makerBeforeA + wantAmt);
+        assertEq(NFT.ownerOf(nftId), taker);
+
+        (, uint56 postDl,,) = zamm.orders(h);
+        assertEq(postDl, 0, "order should be deleted");
+    }
+
+    /// @dev You can’t make the same order twice
+    function testMakeDuplicateReverts() public {
+        uint96 inAmt = 1e18;
+        uint96 outAmt = 1e18;
+        uint56 dl = uint56(block.timestamp + 1);
+
+        zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
+        vm.expectRevert(ZAMM.Pending.selector);
+        zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
+    }
+
+    /// @dev Non-partial fills must use fillPart == 0 or == amtOut
+    function testFillNonPartialWrongFillPartReverts() public {
+        uint96 inAmt = 5e18;
+        uint96 outAmt = 2e18;
+        uint56 dl = uint56(block.timestamp + 1);
+
+        bytes32 h = zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
+        vm.prank(taker);
+        vm.expectRevert(ZAMM.BadSize.selector);
+        zamm.fillOrder(
+            address(this),
+            address(A),
+            0,
+            inAmt,
+            address(B),
+            0,
+            outAmt,
+            dl,
+            false,
+            1e18 // neither 0 nor outAmt
+        );
+    }
+
+    /// @dev Partial‐fill sliceOut > amtOut should revert Overflow()
+    function testPartialFillOverflowReverts() public {
+        uint96 inAmt = 4e18;
+        uint96 outAmt = 2e18;
+        uint56 dl = uint56(block.timestamp + 1);
+
+        bytes32 h = zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, true);
+        vm.prank(taker);
+        vm.expectRevert(ZAMM.Overflow.selector);
+        zamm.fillOrder(
+            address(this),
+            address(A),
+            0,
+            inAmt,
+            address(B),
+            0,
+            outAmt,
+            dl,
+            true,
+            3e18 // sliceOut > outAmt
+        );
+    }
+
+    /// @dev Cancelling a partial ETH order refunds only the un-filled remainder
+    function testPartialCancelRefundsRemainingEth() public {
+        uint96 inAmt = 4 ether;
+        uint96 outAmt = 2 ether;
+        uint56 dl = uint56(block.timestamp + 1);
+        // make partial ETH order
+        zamm.makeOrder{value: inAmt}(address(0), 0, inAmt, address(A), 0, outAmt, dl, true);
+        // taker takes 1 out => inDone = (4 * 1) / 2 = 2
+        vm.prank(taker);
+        zamm.fillOrder(
+            address(this), address(0), 0, inAmt, address(A), 0, outAmt, dl, true, 1 ether
+        );
+        uint256 before = address(this).balance;
+        // cancel should refund inAmt - inDone = 2 ETH
+        zamm.cancelOrder(address(0), 0, inAmt, address(A), 0, outAmt, dl, true);
+        assertEq(address(this).balance, before + 2 ether);
+    }
+
+    /// @dev Expired orders are still cancelable
+    function testCancelAfterExpiryAllowed() public {
+        uint96 inAmt = 1e18;
+        uint96 outAmt = 1e18;
+        uint56 dl = uint56(block.timestamp + 1);
+        zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
+        vm.warp(dl + 10);
+        // should not revert
+        zamm.cancelOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
+        // and order is gone
+        (, uint56 postDl,,) = zamm.orders(
+            keccak256(
+                abi.encode(msg.sender, address(A), 0, inAmt, address(B), 0, outAmt, dl, false)
+            )
+        );
+        assertEq(postDl, 0);
     }
 
     receive() external payable {}

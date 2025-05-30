@@ -176,4 +176,13 @@ contract ZAMMTimeLockTest is Test {
         vm.expectRevert(ZAMM.Unauthorized.selector);
         zamm.unlock(address(0), recipient, 0, amount, unlockTime);
     }
+
+    /// @dev Locking an ERC-20 with nonzero msg.value should revert InvalidMsgVal()
+    function testLockupERC20WithValueReverts() public {
+        uint256 amount = 1e18;
+        uint256 unlockTime = block.timestamp + 1;
+
+        vm.expectRevert(ZAMM.InvalidMsgVal.selector);
+        zamm.lockup{value: 1}(address(token), recipient, 0, amount, unlockTime);
+    }
 }
