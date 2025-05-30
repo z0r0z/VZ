@@ -2,6 +2,10 @@
 
 A Minimal Multitoken AMM. By [z0r0z](https://x.com/z0r0zzz).
 
+Deployed to [0x000000000000040470635EB91b7CE4D132D616eD](https://contractscan.xyz/contract/0x000000000000040470635EB91b7CE4D132D616eD).
+
+This deployment includes an embedded orderbook and timelock extension.
+
 ## Getting Started
 
 Run: `curl -L https://foundry.paradigm.xyz | bash && source ~/.bashrc && foundryup`

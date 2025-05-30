@@ -1,5 +1,5 @@
 # ZAMM
-[Git Source](https://github.com/zammdefi/ZAMM/blob/acf5c5bb2c446e0854e0315d682019d8a2d87e22/src/ZAMM.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/a16fe98b0b7a92f7973a9fafc3de78cf238deec1/src/ZAMM.sol)
 
 **Inherits:**
 [ZERC6909](/src/ZERC6909.sol/abstract.ZERC6909.md)
@@ -20,10 +20,24 @@ uint256 constant MAX_FEE = 10000;
 ```
 
 
-### coins
+### FLAG_BEFORE
 
 ```solidity
-uint256 coins;
+uint256 constant FLAG_BEFORE = 1 << 255;
+```
+
+
+### FLAG_AFTER
+
+```solidity
+uint256 constant FLAG_AFTER = 1 << 254;
+```
+
+
+### ADDR_MASK
+
+```solidity
+uint256 constant ADDR_MASK = (1 << 160) - 1;
 ```
 
 
@@ -31,6 +45,27 @@ uint256 coins;
 
 ```solidity
 mapping(uint256 poolId => Pool) public pools;
+```
+
+
+### coins
+
+```solidity
+uint256 coins;
+```
+
+
+### lockups
+
+```solidity
+mapping(bytes32 lockHash => uint256 unlockTime) public lockups;
+```
+
+
+### orders
+
+```solidity
+mapping(bytes32 orderHash => Order) public orders;
 ```
 
 
@@ -53,7 +88,8 @@ function _safeTransfer(address token, address to, uint256 id, uint256 amount) in
 
 
 ```solidity
-function _safeTransferFrom(address token, uint256 id, uint256 amount) internal;
+function _safeTransferFrom(address token, address from, address to, uint256 id, uint256 amount)
+    internal;
 ```
 
 ### constructor
@@ -74,6 +110,32 @@ function _update(
     uint256 balance1,
     uint112 reserve0,
     uint112 reserve1
+) internal;
+```
+
+### _decode
+
+
+```solidity
+function _decode(uint256 v)
+    internal
+    pure
+    returns (uint256 feeBps, address hook, bool pre, bool post);
+```
+
+### _postHook
+
+
+```solidity
+function _postHook(
+    bytes4 sig,
+    uint256 poolId,
+    address sender,
+    int256 d0,
+    int256 d1,
+    int256 dLiq,
+    bytes memory data,
+    address hook
 ) internal;
 ```
 
@@ -156,11 +218,97 @@ function removeLiquidity(
 ) public lock returns (uint256 amount0, uint256 amount1);
 ```
 
-### make
+### coin
 
 
 ```solidity
-function make(address maker, uint256 supply, string calldata uri) public returns (uint256 coinId);
+function coin(address creator, uint256 supply, string calldata uri)
+    public
+    returns (uint256 coinId);
+```
+
+### lockup
+
+
+```solidity
+function lockup(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
+    public
+    payable
+    lock
+    returns (bytes32 lockHash);
+```
+
+### unlock
+
+
+```solidity
+function unlock(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
+    public
+    lock;
+```
+
+### makeOrder
+
+
+```solidity
+function makeOrder(
+    address tokenIn,
+    uint256 idIn,
+    uint96 amtIn,
+    address tokenOut,
+    uint256 idOut,
+    uint96 amtOut,
+    uint56 deadline,
+    bool partialFill
+) public payable lock returns (bytes32 orderHash);
+```
+
+### fillOrder
+
+
+```solidity
+function fillOrder(
+    address maker,
+    address tokenIn,
+    uint256 idIn,
+    uint96 amtIn,
+    address tokenOut,
+    uint256 idOut,
+    uint96 amtOut,
+    uint56 deadline,
+    bool partialFill,
+    uint96 fillPart
+) public payable lock;
+```
+
+### cancelOrder
+
+
+```solidity
+function cancelOrder(
+    address tokenIn,
+    uint256 idIn,
+    uint96 amtIn,
+    address tokenOut,
+    uint256 idOut,
+    uint96 amtOut,
+    uint56 deadline,
+    bool partialFill
+) public lock;
+```
+
+### _payOut
+
+
+```solidity
+function _payOut(address token, uint256 id, uint96 amt, address to) internal;
+```
+
+### _payIn
+
+
+```solidity
+function _payIn(address token, uint256 id, uint96 amt, address from) internal;
 ```
 
 ### receive
@@ -214,7 +362,7 @@ function _getPoolId(PoolKey calldata poolKey) internal pure returns (uint256 poo
 
 
 ```solidity
-function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint256 swapFee)
     internal
     pure
     returns (uint256 amountOut);
@@ -224,7 +372,7 @@ function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, 
 
 
 ```solidity
-function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint256 swapFee)
     internal
     pure
     returns (uint256 amountIn);
@@ -289,6 +437,30 @@ event Sync(uint256 indexed poolId, uint112 reserve0, uint112 reserve1);
 event URI(string uri, uint256 indexed coinId);
 ```
 
+### Lock
+
+```solidity
+event Lock(address indexed sender, address indexed to, bytes32 indexed lockHash);
+```
+
+### Make
+
+```solidity
+event Make(address indexed maker, bytes32 indexed orderHash);
+```
+
+### Fill
+
+```solidity
+event Fill(address indexed taker, bytes32 indexed orderHash);
+```
+
+### Cancel
+
+```solidity
+event Cancel(address indexed maker, bytes32 indexed orderHash);
+```
+
 ## Errors
 ### Reentrancy
 
@@ -338,10 +510,10 @@ error InsufficientOutputAmount();
 error K();
 ```
 
-### InvalidSwapFee
+### InvalidFeeOrHook
 
 ```solidity
-error InvalidSwapFee();
+error InvalidFeeOrHook();
 ```
 
 ### InvalidPoolTokens
@@ -354,6 +526,18 @@ error InvalidPoolTokens();
 
 ```solidity
 error InsufficientLiquidityMinted();
+```
+
+### Pending
+
+```solidity
+error Pending();
+```
+
+### BadSize
+
+```solidity
+error BadSize();
 ```
 
 ### Unauthorized
@@ -371,7 +555,7 @@ struct PoolKey {
     uint256 id1;
     address token0;
     address token1;
-    uint96 swapFee;
+    uint256 feeOrHook;
 }
 ```
 
@@ -386,6 +570,17 @@ struct Pool {
     uint256 price1CumulativeLast;
     uint256 kLast;
     uint256 supply;
+}
+```
+
+### Order
+
+```solidity
+struct Order {
+    bool partialFill;
+    uint56 deadline;
+    uint96 inDone;
+    uint96 outDone;
 }
 ```
 

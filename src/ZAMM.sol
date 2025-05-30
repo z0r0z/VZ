@@ -8,6 +8,7 @@ import "./utils/TransferHelper.sol";
 // maximally simple constant product AMM singleton
 // minted by z0r0z as concentric liquidity backend
 // with a native coin path for efficient pool swap
+// as well as embedded orderbook and timelock mech
 contract ZAMM is ZERC6909 {
     // constants
     uint256 constant MINIMUM_LIQUIDITY = 1000;
