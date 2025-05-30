@@ -16,7 +16,7 @@ function mulDiv(uint256 x, uint256 y, uint256 d) pure returns (uint256 z) {
     assembly ("memory-safe") {
         z := mul(x, y)
         if iszero(mul(or(iszero(x), eq(div(z, x), y)), d)) {
-            mstore(0x00, 0xad251c27)
+            mstore(0x00, 0xad251c27) // `MulDivFailed()`
             revert(0x1c, 0x04)
         }
         z := div(z, d)

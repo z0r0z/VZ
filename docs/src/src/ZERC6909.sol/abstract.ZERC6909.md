@@ -1,5 +1,5 @@
 # ZERC6909
-[Git Source](https://github.com/zammdefi/ZAMM/blob/acf5c5bb2c446e0854e0315d682019d8a2d87e22/src/ZERC6909.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/fa189555585feef833515e20b93171c09b0534a0/src/ZERC6909.sol)
 
 **Author:**
 Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
@@ -117,6 +117,6 @@ function _mint(address to, uint256 id, uint256 amount) internal;
 
 
 ```solidity
-function _burn(uint256 id, uint256 amount) internal;
+function _burn(address from, uint256 id, uint256 amount) internal;
 ```
 

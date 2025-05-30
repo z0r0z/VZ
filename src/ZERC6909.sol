@@ -54,7 +54,7 @@ abstract contract ZERC6909 {
             let fromBalanceSlot := keccak256(0x00, 0x40)
             let fromBalance := sload(fromBalanceSlot)
             if gt(amount, fromBalance) {
-                mstore(0x00, 0xf4d678b8)
+                mstore(0x00, 0xf4d678b8) // `InsufficientBalance()`
                 revert(0x1c, 0x04)
             }
             sstore(fromBalanceSlot, sub(fromBalance, amount))
@@ -64,7 +64,7 @@ abstract contract ZERC6909 {
             let toBalanceBefore := sload(toBalanceSlot)
             let toBalanceAfter := add(toBalanceBefore, amount)
             if lt(toBalanceAfter, toBalanceBefore) {
-                mstore(0x00, 0x89560ca1)
+                mstore(0x00, 0x89560ca1) // `BalanceOverflow()`
                 revert(0x1c, 0x04)
             }
             sstore(toBalanceSlot, toBalanceAfter)
@@ -90,7 +90,7 @@ abstract contract ZERC6909 {
                 let allowance_ := sload(allowanceSlot)
                 if add(allowance_, 1) {
                     if gt(amount, allowance_) {
-                        mstore(0x00, 0xdeda9030)
+                        mstore(0x00, 0xdeda9030) // `InsufficientPermission()`
                         revert(0x1c, 0x04)
                     }
                     sstore(allowanceSlot, sub(allowance_, amount))
@@ -100,7 +100,7 @@ abstract contract ZERC6909 {
             let fromBalanceSlot := keccak256(0x14, 0x40)
             let fromBalance := sload(fromBalanceSlot)
             if gt(amount, fromBalance) {
-                mstore(0x00, 0xf4d678b8)
+                mstore(0x00, 0xf4d678b8) // `InsufficientBalance()`
                 revert(0x1c, 0x04)
             }
             sstore(fromBalanceSlot, sub(fromBalance, amount))
@@ -110,7 +110,7 @@ abstract contract ZERC6909 {
             let toBalanceBefore := sload(toBalanceSlot)
             let toBalanceAfter := add(toBalanceBefore, amount)
             if lt(toBalanceAfter, toBalanceBefore) {
-                mstore(0x00, 0x89560ca1)
+                mstore(0x00, 0x89560ca1) // `BalanceOverflow()`
                 revert(0x1c, 0x04)
             }
             sstore(toBalanceSlot, toBalanceAfter)
@@ -156,6 +156,7 @@ abstract contract ZERC6909 {
     function supportsInterface(bytes4 interfaceId) public pure returns (bool result) {
         assembly ("memory-safe") {
             let s := shr(224, interfaceId)
+            // ERC165: 0x01ffc9a7, ERC6909: 0x0f632fb3
             result := or(eq(s, 0x01ffc9a7), eq(s, 0x0f632fb3))
         }
     }
@@ -181,7 +182,7 @@ abstract contract ZERC6909 {
             let toBalanceBefore := sload(toBalanceSlot)
             let toBalanceAfter := add(toBalanceBefore, amount)
             if lt(toBalanceAfter, toBalanceBefore) {
-                mstore(0x00, 0x89560ca1)
+                mstore(0x00, 0x89560ca1) // `BalanceOverflow()`
                 revert(0x1c, 0x04)
             }
             sstore(toBalanceSlot, toBalanceAfter)
@@ -191,21 +192,21 @@ abstract contract ZERC6909 {
         }
     }
 
-    function _burn(uint256 id, uint256 amount) internal {
+    function _burn(address from, uint256 id, uint256 amount) internal {
         assembly ("memory-safe") {
             mstore(0x20, ERC6909_MASTER_SLOT_SEED)
-            mstore(0x14, caller())
+            mstore(0x14, from)
             mstore(0x00, id)
             let fromBalanceSlot := keccak256(0x00, 0x40)
             let fromBalance := sload(fromBalanceSlot)
             if gt(amount, fromBalance) {
-                mstore(0x00, 0xf4d678b8)
+                mstore(0x00, 0xf4d678b8) // `InsufficientBalance()`
                 revert(0x1c, 0x04)
             }
             sstore(fromBalanceSlot, sub(fromBalance, amount))
             mstore(0x00, caller())
             mstore(0x20, amount)
-            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, caller())), 0, id)
+            log4(0x00, 0x40, TRANSFER_EVENT_SIGNATURE, shr(96, shl(96, from)), 0, id)
         }
     }
 }

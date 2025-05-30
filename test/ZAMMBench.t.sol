@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
@@ -203,7 +203,7 @@ struct PoolKey {
     uint256 id1;
     address token0;
     address token1;
-    uint96 swapFee;
+    uint256 feeOrHook;
 }
 
 interface IZAMM {

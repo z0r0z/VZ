@@ -1,5 +1,5 @@
 # min
-[Git Source](https://github.com/zammdefi/ZAMM/blob/acf5c5bb2c446e0854e0315d682019d8a2d87e22/src/utils/Math.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/fa189555585feef833515e20b93171c09b0534a0/src/utils/Math.sol)
 
 *Returns the minimum of `x` and `y`.*
 
