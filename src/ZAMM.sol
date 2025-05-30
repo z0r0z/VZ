@@ -160,7 +160,7 @@ contract ZAMM is ZERC6909 {
             hook = address(uint160(v));
             pre = (v & FLAG_BEFORE) != 0;
             post = (v & FLAG_AFTER) != 0;
-            if (!pre && !post) post = true; // default = after-only
+            if (!pre) if (!post) post = true; // default = after-only
         }
     }
 
