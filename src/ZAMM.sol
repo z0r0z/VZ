@@ -796,7 +796,6 @@ contract ZAMM is ZERC6909 {
         require(order.deadline != 0, Unauthorized());
         require(block.timestamp <= order.deadline, Expired());
 
-        // pull old cumulative fills
         uint96 oldIn = order.inDone;
         uint96 oldOut = order.outDone;
 
@@ -809,7 +808,6 @@ contract ZAMM is ZERC6909 {
             : amtIn;
         require(sliceIn != 0, BadSize());
 
-        // new cumulative totals
         uint96 newOutDone = oldOut + sliceOut;
         uint96 newInDone = oldIn + sliceIn;
 
@@ -821,11 +819,9 @@ contract ZAMM is ZERC6909 {
             outDone: newOutDone
         });
 
-        // do the transfers
         _payOut(tokenOut, idOut, sliceOut, maker);
         _payIn(tokenIn, idIn, sliceIn, maker);
 
-        // if fully filled, clean up
         if (newOutDone == amtOut) {
             delete orders[orderHash];
         }
