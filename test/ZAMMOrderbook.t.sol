@@ -281,7 +281,7 @@ contract ZAMMOrderbookTest is Test {
         uint96 outAmt = 2e18;
         uint56 dl = uint56(block.timestamp + 1);
 
-        bytes32 h = zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
+        zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, false);
         vm.prank(taker);
         vm.expectRevert(ZAMM.BadSize.selector);
         zamm.fillOrder(
@@ -304,7 +304,7 @@ contract ZAMMOrderbookTest is Test {
         uint96 outAmt = 2e18;
         uint56 dl = uint56(block.timestamp + 1);
 
-        bytes32 h = zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, true);
+        zamm.makeOrder(address(A), 0, inAmt, address(B), 0, outAmt, dl, true);
         vm.prank(taker);
         vm.expectRevert(ZAMM.Overflow.selector);
         zamm.fillOrder(

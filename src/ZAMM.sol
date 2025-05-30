@@ -697,6 +697,7 @@ contract ZAMM is ZERC6909 {
         lock
         returns (bytes32 lockHash)
     {
+        require(unlockTime > block.timestamp, Expired());
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
         if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
 
@@ -794,17 +795,16 @@ contract ZAMM is ZERC6909 {
 
         if (partialFill) {
             sliceOut = (fillPart == 0) ? amtOut - order.outDone : fillPart;
-            unchecked {
-                require(sliceOut != 0 && order.outDone + sliceOut <= amtOut, Overflow());
 
-                sliceIn =
-                    (fillPart == 0) ? amtIn - order.inDone : uint96(mulDiv(amtIn, sliceOut, amtOut));
+            require(sliceOut != 0 && order.outDone + sliceOut <= amtOut, Overflow());
 
-                require(sliceIn != 0, BadSize());
+            sliceIn =
+                (fillPart == 0) ? amtIn - order.inDone : uint96(mulDiv(amtIn, sliceOut, amtOut));
 
-                order.outDone += sliceOut;
-                order.inDone += sliceIn;
-            }
+            require(sliceIn != 0, BadSize());
+
+            order.outDone += sliceOut;
+            order.inDone += sliceIn;
 
             _payOut(tokenOut, idOut, sliceOut, maker);
             _payIn(tokenIn, idIn, sliceIn, maker);
@@ -848,7 +848,7 @@ contract ZAMM is ZERC6909 {
         delete orders[orderHash];
 
         if (partialFill) amtIn -= order.inDone; // account for unspent ETH escrow
-        if (amtIn != 0) if (tokenIn == address(0)) safeTransferETH(msg.sender, amtIn);
+        if (tokenIn == address(0)) if (amtIn != 0) safeTransferETH(msg.sender, amtIn);
 
         emit Cancel(msg.sender, orderHash);
     }
