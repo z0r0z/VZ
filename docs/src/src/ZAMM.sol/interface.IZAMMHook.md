@@ -1,12 +1,9 @@
 # IZAMMHook
-[Git Source](https://github.com/zammdefi/ZAMM/blob/a16fe98b0b7a92f7973a9fafc3de78cf238deec1/src/ZAMM.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/fa189555585feef833515e20b93171c09b0534a0/src/ZAMM.sol)
 
 
 ## Functions
 ### beforeAction
-
-*Optional pre-swap / pre-mint / pre-burn call.
-May revert or return a feeBps override (0 = keep as-is).*
 
 
 ```solidity
@@ -16,8 +13,6 @@ function beforeAction(bytes4 sig, uint256 poolId, address sender, bytes calldata
 ```
 
 ### afterAction
-
-*Runs after reserves committed.*
 
 
 ```solidity

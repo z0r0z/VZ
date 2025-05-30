@@ -6,6 +6,8 @@ Deployed to [0x000000000000040470635EB91b7CE4D132D616eD](https://contractscan.xy
 
 This deployment includes an embedded orderbook and timelock extension.
 
+Docs: [docs.zamm.eth.limo](https://docs.zamm.eth.limo/)
+
 ## Getting Started
 
 Run: `curl -L https://foundry.paradigm.xyz | bash && source ~/.bashrc && foundryup`

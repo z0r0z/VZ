@@ -811,7 +811,6 @@ contract ZAMM is ZERC6909 {
         uint96 newOutDone = oldOut + sliceOut;
         uint96 newInDone = oldIn + sliceIn;
 
-        // single SSTORE of all four fields
         orders[orderHash] = Order({
             partialFill: order.partialFill,
             deadline: order.deadline,
@@ -822,9 +821,7 @@ contract ZAMM is ZERC6909 {
         _payOut(tokenOut, idOut, sliceOut, maker);
         _payIn(tokenIn, idIn, sliceIn, maker);
 
-        if (newOutDone == amtOut) {
-            delete orders[orderHash];
-        }
+        if (newOutDone == amtOut) delete orders[orderHash];
 
         emit Fill(msg.sender, orderHash);
     }
@@ -1036,16 +1033,10 @@ interface IZAMMCallee {
 
 // minimal ZAMM hook interface
 interface IZAMMHook {
-    /// @dev Optional pre-swap / pre-mint / pre-burn call.
-    /// May revert or return a feeBps override (0 = keep as-is).
-    function beforeAction(
-        bytes4 sig, // msg.sig of kernel entry
-        uint256 poolId,
-        address sender,
-        bytes calldata data // "" for exactIn/Out & liquidity fns, user data for swap(bytes)
-    ) external returns (uint256 feeBps);
+    function beforeAction(bytes4 sig, uint256 poolId, address sender, bytes calldata data)
+        external
+        returns (uint256 feeBps);
 
-    /// @dev Runs after reserves committed.
     function afterAction(
         bytes4 sig,
         uint256 poolId,

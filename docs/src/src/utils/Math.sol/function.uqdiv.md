@@ -1,5 +1,5 @@
 # uqdiv
-[Git Source](https://github.com/zammdefi/ZAMM/blob/a16fe98b0b7a92f7973a9fafc3de78cf238deec1/src/utils/Math.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/fa189555585feef833515e20b93171c09b0534a0/src/utils/Math.sol)
 
 *Divide a UQ112x112 by a uint112, returning a UQ112x112.*
 

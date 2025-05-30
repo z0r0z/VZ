@@ -1,5 +1,5 @@
 # ZERC6909
-[Git Source](https://github.com/zammdefi/ZAMM/blob/a16fe98b0b7a92f7973a9fafc3de78cf238deec1/src/ZERC6909.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/fa189555585feef833515e20b93171c09b0534a0/src/ZERC6909.sol)
 
 **Author:**
 Modified from Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC6909.sol)
