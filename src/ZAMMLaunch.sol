@@ -1,66 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/*───────────────────────────  ZAMM interface  ───────────────────────────*/
-interface IZAMM {
-    /* ── Order-book ── */
-    function makeOrder(
-        address tokenIn,
-        uint256 idIn,
-        uint96 amtIn,
-        address tokenOut,
-        uint256 idOut,
-        uint96 amtOut,
-        uint56 deadline,
-        bool partialFill
-    ) external payable returns (bytes32 orderHash);
-
-    function fillOrder(
-        address maker,
-        address tokenIn,
-        uint256 idIn,
-        uint96 amtIn,
-        address tokenOut,
-        uint256 idOut,
-        uint96 amtOut,
-        uint56 deadline,
-        bool partialFill,
-        uint96 fillPart
-    ) external payable;
-
-    /* ── Liquidity ── */
-    struct PoolKey {
-        uint256 id0;
-        uint256 id1;
-        address token0;
-        address token1;
-        uint256 feeOrHook;
-    }
-
-    function addLiquidity(
-        PoolKey calldata poolKey,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        uint256 amount0Min,
-        uint256 amount1Min,
-        address to,
-        uint256 deadline
-    ) external payable returns (uint256 amount0, uint256 amount1, uint256 liquidity);
-
-    function lockup(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
-        external
-        payable
-        returns (bytes32 lockHash);
-
-    /* ── ERC-6909 coin ── */
-    function coin(address creator, uint256 supply, string calldata uri)
-        external
-        returns (uint256 coinId);
-    function transfer(address to, uint256 id, uint256 amount) external returns (bool);
-    function balanceOf(address owner, uint256 id) external view returns (uint256);
-    function setOperator(address op, bool ok) external returns (bool);
-}
-
 /*──────────────────────────  ZAMMLaunch  ──────────────────────────*/
 contract ZAMMLaunch {
     /* ───────── constants ───────── */
@@ -117,8 +57,10 @@ contract ZAMMLaunch {
 
         /* 1. mint coin to this contract */
         uint96 saleSupply;
-        for (uint256 i; i != L; ++i) {
-            saleSupply += trancheCoins[i];
+        unchecked {
+            for (uint256 i; i != L; ++i) {
+                saleSupply += trancheCoins[i];
+            }
         }
         coinId = Z.coin(address(this), creatorSupply + saleSupply, uri);
 
@@ -201,7 +143,7 @@ contract ZAMMLaunch {
         emit Buy(msg.sender, coinId, msg.value, fillPart);
 
         /* auto-finalize if no coins left (account for wei remainder) */
-        if (Z.balanceOf(address(this), coinId) < 2) _finalize(S, coinId);
+        if (Z.balanceOf(address(this), coinId) == 0) _finalize(S, coinId);
     }
 
     error Unauthorized();
@@ -266,4 +208,64 @@ contract ZAMMLaunch {
 
         emit Finalize(coinId, escrow, coinBal, lp);
     }
+}
+
+/*───────────────────────────  ZAMM interface  ───────────────────────────*/
+interface IZAMM {
+    /* ── Order-book ── */
+    function makeOrder(
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn,
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut,
+        uint56 deadline,
+        bool partialFill
+    ) external payable returns (bytes32 orderHash);
+
+    function fillOrder(
+        address maker,
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn,
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut,
+        uint56 deadline,
+        bool partialFill,
+        uint96 fillPart
+    ) external payable;
+
+    /* ── Liquidity ── */
+    struct PoolKey {
+        uint256 id0;
+        uint256 id1;
+        address token0;
+        address token1;
+        uint256 feeOrHook;
+    }
+
+    function addLiquidity(
+        PoolKey calldata poolKey,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        address to,
+        uint256 deadline
+    ) external payable returns (uint256 amount0, uint256 amount1, uint256 liquidity);
+
+    function lockup(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
+        external
+        payable
+        returns (bytes32 lockHash);
+
+    /* ── ERC-6909 coin ── */
+    function coin(address creator, uint256 supply, string calldata uri)
+        external
+        returns (uint256 coinId);
+    function transfer(address to, uint256 id, uint256 amount) external returns (bool);
+    function balanceOf(address owner, uint256 id) external view returns (uint256);
+    function setOperator(address op, bool ok) external returns (bool);
 }

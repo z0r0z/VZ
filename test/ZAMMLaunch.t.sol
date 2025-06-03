@@ -122,6 +122,9 @@ contract ZAMMLaunchpadTest is Test {
     /* =============================================================== */
     /*        ❷  Early finalisation must revert (still in window)      */
     /* =============================================================== */
+
+    error Pending();
+
     function testEarlyFinalizeReverts() public {
         delete coins;
         delete prices;
@@ -131,7 +134,7 @@ contract ZAMMLaunchpadTest is Test {
         uint256 coinId = pad.launch(0, coins, prices, "u", false, 0, false, 0);
 
         // creator tries to finalise immediately
-        vm.expectRevert("sale active");
+        vm.expectRevert(Pending.selector);
         pad.finalize(coinId);
     }
 
@@ -151,8 +154,8 @@ contract ZAMMLaunchpadTest is Test {
         vm.prank(buyer1);
         pad.buy{value: 1 ether}(coinId, 0, 0); // sale still inside window
 
-        // early finalise reverts with "sale active"
-        vm.expectRevert("sale active");
+        // early finalise reverts with Pending()
+        vm.expectRevert(Pending.selector);
         pad.finalize(coinId);
 
         // after window: first finalise succeeds
