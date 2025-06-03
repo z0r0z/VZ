@@ -60,7 +60,7 @@ contract ZAMMLaunchpadTest is Test {
         prices.push(uint96(2 ether));
 
         /* launch (no creator allocation) */
-        uint256 coinId = pad.launch(0, coins, prices, "uri", false, 0);
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
 
         /* buyer-1 fills first tranche (600 coins ↔ 1 ETH) */
         vm.prank(buyer1);
@@ -94,7 +94,7 @@ contract ZAMMLaunchpadTest is Test {
         coins.push(1_000);
         prices.push(uint96(2 ether));
 
-        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
+        uint256 id = pad.launch(0, 0, "uri", coins, prices);
 
         vm.prank(buyer1);
         pad.buy{value: 1 ether}(id, 0); // half the tranche
@@ -120,7 +120,7 @@ contract ZAMMLaunchpadTest is Test {
         coins.push(100);
         prices.push(uint96(1 ether));
 
-        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
+        uint256 id = pad.launch(0, 0, "u", coins, prices);
 
         vm.expectRevert(ZAMMLaunch.Pending.selector);
         pad.finalize(id);
@@ -133,7 +133,7 @@ contract ZAMMLaunchpadTest is Test {
         coins.push(100);
         prices.push(uint96(1 ether));
 
-        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
+        uint256 id = pad.launch(0, 0, "u", coins, prices);
 
         // still inside window → Pending
         vm.expectRevert(ZAMMLaunch.Pending.selector);
@@ -153,7 +153,7 @@ contract ZAMMLaunchpadTest is Test {
         coins.push(500);
         prices.push(uint96(1 ether));
 
-        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
+        uint256 id = pad.launch(0, 0, "u", coins, prices);
 
         vm.prank(buyer1);
         pad.buy{value: 1 ether}(id, 0); // fills & auto-finalises
@@ -173,7 +173,7 @@ contract ZAMMLaunchpadTest is Test {
         coins.push(1_000);
         prices.push(uint96(2 ether));
 
-        uint256 coinId = pad.launch(0, coins, prices, "u", false, 0);
+        uint256 coinId = pad.launch(0, 0, "u", coins, prices);
 
         /* 0.  untouched → full 2 ETH still needed */
         assertEq(uint256(pad.trancheRemainingWei(coinId, 0)), 2 ether);

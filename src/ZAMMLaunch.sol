@@ -34,18 +34,18 @@ contract ZAMMLaunch {
                                 L A U N C H
     // =====================================================================*/
 
-    error ArrayMismatch();
+    error InvalidArray();
 
     function launch(
         uint96 creatorSupply,
-        uint96[] calldata trancheCoins,
-        uint96[] calldata tranchePrice,
+        uint256 creatorUnlock, /*flag*/
         string calldata uri,
-        bool lockCreatorSupply,
-        uint256 creatorUnlock
+        uint96[] calldata trancheCoins,
+        uint96[] calldata tranchePrice
     ) public returns (uint256 coinId) {
         uint256 L = trancheCoins.length;
-        require(L == tranchePrice.length, ArrayMismatch());
+        require(L != 0, InvalidArray());
+        require(L == tranchePrice.length, InvalidArray());
 
         /* 1. mint coin to this contract */
         uint96 saleSupply;
@@ -56,7 +56,8 @@ contract ZAMMLaunch {
 
         /* 2. creator allocation */
         if (creatorSupply != 0) {
-            if (lockCreatorSupply) {
+            // lock if forward-looking
+            if (creatorUnlock > block.timestamp) {
                 Z.lockup(address(Z), msg.sender, coinId, creatorSupply, creatorUnlock);
             } else {
                 Z.transfer(msg.sender, coinId, creatorSupply);
@@ -68,28 +69,30 @@ contract ZAMMLaunch {
         S.creator = msg.sender;
         S.coinId = coinId;
 
-        uint56 dlBase = uint56(block.timestamp) + SALE_DURATION;
-        uint56 dl;
+        unchecked {
+            uint56 dlBase = uint56(block.timestamp) + SALE_DURATION;
+            uint56 dl;
 
-        for (uint256 i; i != L; ++i) {
-            dl = dlBase + uint56(i); // unique hash
-            Z.makeOrder(
-                address(Z),
-                coinId,
-                trancheCoins[i], // sell coin
-                address(0),
-                0,
-                tranchePrice[i], // want ETH
-                dl,
-                true
-            );
-            S.trancheCoins.push(trancheCoins[i]);
-            S.tranchePrice.push(tranchePrice[i]);
-            S.deadlines.push(dl);
+            for (uint256 i; i != L; ++i) {
+                dl = dlBase + uint56(i); // unique hash
+                Z.makeOrder(
+                    address(Z),
+                    coinId,
+                    trancheCoins[i], // sell coin
+                    address(0),
+                    0,
+                    tranchePrice[i], // want ETH
+                    dl,
+                    true
+                );
+                S.trancheCoins.push(trancheCoins[i]);
+                S.tranchePrice.push(tranchePrice[i]);
+                S.deadlines.push(dl);
+            }
+            S.deadlineLast = dlBase + uint56(L - 1);
+
+            emit Launch(msg.sender, coinId, saleSupply);
         }
-        S.deadlineLast = dlBase + uint56(L - 1);
-
-        emit Launch(msg.sender, coinId, saleSupply);
     }
 
     /* ===================================================================== //
