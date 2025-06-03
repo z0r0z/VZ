@@ -253,7 +253,7 @@ interface IZAMM {
     function orders(bytes32 orderHash)
         external
         view
-        returns (bool, /*partialFill*/ uint56, /*deadline*/ uint96, /*inDone*/ uint96); /*outDone*/
+        returns (bool partialFill, uint56 deadline, uint96 inDone, uint96 outDone);
 
     /* ── Liquidity ── */
     struct PoolKey {
