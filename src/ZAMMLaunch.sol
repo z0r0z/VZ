@@ -52,7 +52,7 @@ contract ZAMMLaunch {
         for (uint256 i; i != L; ++i) {
             saleSupply += trancheCoins[i];
         }
-        coinId = Z.coin(address(this), creatorSupply + (saleSupply * 2) /*pool-dupe*/, uri);
+        coinId = Z.coin(address(this), creatorSupply + (saleSupply * 2), /*pool-dupe*/ uri);
 
         /* 2. creator allocation */
         if (creatorSupply != 0) {
@@ -110,7 +110,6 @@ contract ZAMMLaunch {
 
         uint96 coinsIn = S.trancheCoins[trancheIdx];
         uint96 ethOut = S.tranchePrice[trancheIdx];
-        uint56 dl = S.deadlines[trancheIdx];
 
         Z.fillOrder{value: msg.value}(
             address(this),
@@ -120,18 +119,17 @@ contract ZAMMLaunch {
             address(0),
             0,
             ethOut,
-            dl,
+            S.deadlines[trancheIdx],
             true,
             uint96(msg.value)
         );
 
         unchecked {
-            coinsOut = uint128(uint256(coinsIn) * msg.value / ethOut);
+            coinsOut = uint128(coinsIn * msg.value / ethOut);
+            require(coinsOut != 0, InvalidMsgVal());
             S.ethRaised += uint128(msg.value);
             S.coinsSold += coinsOut;
         }
-
-        require(coinsOut != 0, InvalidMsgVal());
 
         Z.transfer(msg.sender, coinId, coinsOut);
 
@@ -170,7 +168,11 @@ contract ZAMMLaunch {
         if (ethTotal > outDone) weiRemaining = ethTotal - outDone;
     }
 
-    receive() external payable {}
+    error Unauthorized();
+
+    receive() external payable {
+        require(msg.sender == address(Z), Unauthorized());
+    }
 
     /* ===================================================================== //
                                F I N A L I Z E
