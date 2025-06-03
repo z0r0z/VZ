@@ -52,7 +52,7 @@ contract ZAMMLaunch {
         for (uint256 i; i != L; ++i) {
             saleSupply += trancheCoins[i];
         }
-        coinId = Z.coin(address(this), creatorSupply + saleSupply + saleSupply, uri);
+        coinId = Z.coin(address(this), creatorSupply + (saleSupply * 2) /*pool-dupe*/, uri);
 
         /* 2. creator allocation */
         if (creatorSupply != 0) {
