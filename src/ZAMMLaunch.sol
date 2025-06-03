@@ -30,7 +30,7 @@ contract ZAMMLaunch {
 
     /* ───────── events ───────── */
     event Launch(address indexed creator, uint256 indexed coinId);
-    event Buy(address indexed buyer, uint256 indexed coinId, uint256 ethIn, uint96 coinOut);
+    event Buy(address indexed buyer, uint256 indexed coinId, uint256 ethIn);
     event Finalize(uint256 indexed coinId, uint256 ethLp, uint256 coinLp, uint256 lpMinted);
 
     /* ───────── constructor ───────── */
@@ -57,10 +57,8 @@ contract ZAMMLaunch {
 
         /* 1. mint coin to this contract */
         uint96 saleSupply;
-        unchecked {
-            for (uint256 i; i != L; ++i) {
-                saleSupply += trancheCoins[i];
-            }
+        for (uint256 i; i != L; ++i) {
+            saleSupply += trancheCoins[i];
         }
         coinId = Z.coin(address(this), creatorSupply + saleSupply, uri);
 
@@ -140,7 +138,7 @@ contract ZAMMLaunch {
             contributions[coinId][msg.sender] += msg.value;
         }
 
-        emit Buy(msg.sender, coinId, msg.value, fillPart);
+        emit Buy(msg.sender, coinId, msg.value);
 
         /* auto-finalize if no coins left (account for wei remainder) */
         if (Z.balanceOf(address(this), coinId) == 0) _finalize(S, coinId);
@@ -205,6 +203,10 @@ contract ZAMMLaunch {
             );
             Z.lockup(address(Z), S.creator, poolId, lp, uint256(S.lpUnlock));
         }
+
+        delete S.trancheCoins;
+        delete S.tranchePrice;
+        delete S.deadlines;
 
         emit Finalize(coinId, escrow, coinBal, lp);
     }
