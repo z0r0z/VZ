@@ -6,7 +6,7 @@ import {ZAMM} from "../src/ZAMM.sol";
 import {ZAMMLaunch} from "../src/ZAMMLaunch.sol";
 
 contract ZAMMLaunchpadTest is Test {
-    ZAMM internal zamm;
+    ZAMM constant zamm = ZAMM(payable(0x000000000000040470635EB91b7CE4D132D616eD));
     ZAMMLaunch internal pad;
 
     uint96[] internal coins;
@@ -17,8 +17,8 @@ contract ZAMMLaunchpadTest is Test {
     address internal buyer2 = address(0xB0B2);
 
     function setUp() public {
-        zamm = new ZAMM();
-        pad = new ZAMMLaunch(address(zamm));
+        vm.createSelectFork(vm.rpcUrl("main")); // Ethereum mainnet fork.
+        pad = new ZAMMLaunch();
 
         vm.deal(creator, 100 ether);
         vm.deal(buyer1, 100 ether);
@@ -26,9 +26,9 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* pool-id helper */
-    function _poolId(uint256 coinId) internal view returns (uint256) {
+    function _poolId(uint256 coinId) internal pure returns (uint256) {
         return uint256(
-            keccak256(abi.encode(uint256(0), coinId, address(0), address(zamm), uint256(30)))
+            keccak256(abi.encode(uint256(0), coinId, address(0), address(zamm), uint256(100)))
         );
     }
 
@@ -57,7 +57,8 @@ contract ZAMMLaunchpadTest is Test {
         coins.push(400);
         prices.push(uint96(2 ether));
 
-        uint256 coinId = pad.launch(0, coins, prices, "uri", false, 0, true, 30 days);
+        uint256 coinId =
+            pad.launch(0, coins, prices, "uri", false, 0, true, block.timestamp + 30 days);
 
         vm.prank(buyer1);
         pad.buy{value: 1 ether}(coinId, 0, 0); // first tranche
@@ -75,8 +76,9 @@ contract ZAMMLaunchpadTest is Test {
         uint256 lpMinted = _sqrt(1 ether * 1_000) - 1_000;
 
         // lock entry exists
-        bytes32 lockHash = keccak256(abi.encode(address(zamm), creator, pid, lpMinted, 30 days));
-        assertEq(zamm.lockups(lockHash), 30 days);
+        bytes32 lockHash =
+            keccak256(abi.encode(address(zamm), creator, pid, lpMinted, block.timestamp + 30 days));
+        assertEq(zamm.lockups(lockHash), block.timestamp + 30 days);
 
         // creator has 0 LP while locked
         assertEq(zamm.balanceOf(creator, pid), 0);
@@ -202,4 +204,6 @@ contract ZAMMLaunchpadTest is Test {
         );
         assertEq(zamm.lockups(dummy), 0);
     }
+
+    receive() external payable {}
 }
