@@ -14,14 +14,14 @@ contract ZAMMLaunch {
     /* ───────── storage ───────── */
     struct Sale {
         address creator;
-        uint256 coinId;
-        uint96[] trancheCoins; // coins offered per tranche
-        uint96[] tranchePrice; // ETH wanted per tranche
-        uint56[] deadlines; // one per tranche
-        uint56 deadlineLast; // quick finalization check
+        uint56 deadlineLast;
         bool lockLp;
-        uint256 lpUnlock;
         bool finalized;
+        uint32 lpUnlock;
+        uint256 coinId;
+        uint96[] trancheCoins;
+        uint96[] tranchePrice;
+        uint56[] deadlines;
     }
 
     mapping(uint256 coinId => Sale) public sales;
@@ -78,7 +78,7 @@ contract ZAMMLaunch {
         S.creator = msg.sender;
         S.coinId = coinId;
         S.lockLp = lockLp;
-        S.lpUnlock = lpUnlockTime;
+        S.lpUnlock = uint32(lpUnlockTime);
 
         uint56 dlBase = uint56(block.timestamp) + SALE_DURATION;
         uint56 dl;
@@ -203,7 +203,7 @@ contract ZAMMLaunch {
             uint256 poolId = uint256(
                 keccak256(abi.encode(key.id0, key.id1, key.token0, key.token1, key.feeOrHook))
             );
-            Z.lockup(address(Z), S.creator, poolId, lp, S.lpUnlock);
+            Z.lockup(address(Z), S.creator, poolId, lp, uint256(S.lpUnlock));
         }
 
         emit Finalize(coinId, escrow, coinBal, lp);
