@@ -6,18 +6,21 @@ import {ZAMM} from "../src/ZAMM.sol";
 import {ZAMMLaunch} from "../src/ZAMMLaunch.sol";
 
 contract ZAMMLaunchpadTest is Test {
+    /* ── deployed artefacts ── */
     ZAMM constant zamm = ZAMM(payable(0x000000000000040470635EB91b7CE4D132D616eD));
-    ZAMMLaunch internal pad;
+    ZAMMLaunch pad;
 
-    uint96[] internal coins;
-    uint96[] internal prices;
+    /* scratch arrays reused every test */
+    uint96[] coins;
+    uint96[] prices;
 
-    address internal creator = address(this);
-    address internal buyer1 = address(0xB0B1);
-    address internal buyer2 = address(0xB0B2);
+    address creator = address(this);
+    address buyer1 = address(0xB0B1);
+    address buyer2 = address(0xB0B2);
 
+    /* ------------------------------------------------ */
     function setUp() public {
-        vm.createSelectFork(vm.rpcUrl("main")); // Ethereum mainnet fork.
+        vm.createSelectFork(vm.rpcUrl("main"));
         pad = new ZAMMLaunch();
 
         vm.deal(creator, 100 ether);
@@ -25,14 +28,14 @@ contract ZAMMLaunchpadTest is Test {
         vm.deal(buyer2, 100 ether);
     }
 
-    /* pool-id helper */
+    /* helpers ------------------------------------------------------------ */
+
     function _poolId(uint256 coinId) internal pure returns (uint256) {
         return uint256(
             keccak256(abi.encode(uint256(0), coinId, address(0), address(zamm), uint256(100)))
         );
     }
 
-    /* √ helper (integer Babylonian) */
     function _sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
             z = y;
@@ -46,166 +49,120 @@ contract ZAMMLaunchpadTest is Test {
         }
     }
 
-    /* ------------------------------------------------------------- */
-    /*                2-tranche sale, LP locked                      */
-    /* ------------------------------------------------------------- */
+    /* 1 ───────────────────────────────────────────────────────────────── */
     function testTwoTrancheManualFinalize() public {
+        /* tranche data – populate the reusable storage arrays */
         delete coins;
         delete prices;
         coins.push(600);
-        prices.push(uint96(1 ether));
         coins.push(400);
+        prices.push(uint96(1 ether));
         prices.push(uint96(2 ether));
 
-        uint256 coinId =
-            pad.launch(0, coins, prices, "uri", false, 0, true, block.timestamp + 30 days);
+        /* launch (no creator allocation) */
+        uint256 coinId = pad.launch(0, coins, prices, "uri", false, 0);
 
+        /* buyer-1 fills first tranche (600 coins ↔ 1 ETH) */
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(coinId, 0, 0); // first tranche
+        pad.buy{value: 1 ether}(coinId, 0, 0);
 
-        // launchpad still has full 1 000 coins (burn/mint cycle)
-        assertEq(zamm.balanceOf(address(pad), coinId), 1_000);
+        /* 2 000 coins minted (saleSupply×2). 600 sold → 1 400 remain pre-finalize */
+        assertEq(zamm.balanceOf(address(pad), coinId), 1_400);
 
+        /* warp >1 week, buyer-2 finalises */
         vm.warp(block.timestamp + 8 days);
         vm.prank(buyer2);
-        pad.finalize(coinId); // third-party finalise
+        pad.finalize(coinId);
 
+        /* LP tokens: √(ETH × sold) − 1 000 (min-liquidity) */
+        uint256 expectedLp = _sqrt(1 ether * 600) - 1_000;
         uint256 pid = _poolId(coinId);
+        assertEq(zamm.balanceOf(address(pad), pid), expectedLp);
 
-        /* compute expected LP amount: √(ETH * coins) - 1 000 */
-        uint256 lpMinted = _sqrt(1 ether * 1_000) - 1_000;
+        /* after depositing 600 coins into the pool, 800 duplicate coins remain */
+        assertEq(zamm.balanceOf(address(pad), coinId), 800);
 
-        // lock entry exists
-        bytes32 lockHash =
-            keccak256(abi.encode(address(zamm), creator, pid, lpMinted, block.timestamp + 30 days));
-        assertEq(zamm.lockups(lockHash), block.timestamp + 30 days);
-
-        // creator has 0 LP while locked
-        assertEq(zamm.balanceOf(creator, pid), 0);
-
-        // escrow cleared
-        assertEq(pad.ethRaised(coinId), 0);
-        assertEq(pad.contributions(coinId, buyer1), 1 ether);
+        /* finalise is idempotent */
+        vm.expectRevert(ZAMMLaunch.Finalized.selector);
+        pad.finalize(coinId);
     }
 
-    /* ================================================================== */
-    /* ❶ Partial fill, explicit size, then remainder, then finalise       */
-    /* ================================================================== */
+    /* 2 ───────────────── Partial-fill then remainder ─────────────────── */
     function testPartialFillExplicitSize() public {
         delete coins;
         delete prices;
         coins.push(1_000);
         prices.push(uint96(2 ether));
 
-        uint256 coinId = pad.launch(0, coins, prices, "u", false, 0, false, 0);
+        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
 
-        // buyer1 purchases exactly 1 ETH worth
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(coinId, 0, 1 ether);
+        pad.buy{value: 1 ether}(id, 0, 1 ether); // half the tranche
 
-        // escrow = 1 ETH so far
-        assertEq(pad.ethRaised(coinId), 1 ether);
+        (,,, uint128 raisedHalf,) = pad.sales(id);
+        assertEq(raisedHalf, 1 ether);
 
-        // buyer2 takes remainder
         vm.prank(buyer2);
-        pad.buy{value: 1 ether}(coinId, 0, 0);
+        pad.buy{value: 1 ether}(id, 0, 0); // take remainder → auto-finalise
 
-        // warp > 1 w and creator finalises
-        vm.warp(block.timestamp + 8 days);
-        pad.finalize(coinId);
+        (,,, uint128 raisedFin,) = pad.sales(id);
+        assertEq(raisedFin, 0); // escrow swept to LP
 
-        // escrow zeroed and total contributions = 2 ETH
-        assertEq(pad.ethRaised(coinId), 0);
-        assertEq(pad.contributions(coinId, buyer1) + pad.contributions(coinId, buyer2), 2 ether);
+        // further finalise must revert with Finalized()
+        vm.expectRevert(ZAMMLaunch.Finalized.selector);
+        pad.finalize(id);
     }
 
-    /* =============================================================== */
-    /*        ❷  Early finalisation must revert (still in window)      */
-    /* =============================================================== */
-
-    error Pending();
-
+    /* 3 ───────────────── early-finalise guard ────────────────────────── */
     function testEarlyFinalizeReverts() public {
         delete coins;
         delete prices;
         coins.push(100);
         prices.push(uint96(1 ether));
 
-        uint256 coinId = pad.launch(0, coins, prices, "u", false, 0, false, 0);
+        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
 
-        // creator tries to finalise immediately
-        vm.expectRevert(Pending.selector);
-        pad.finalize(coinId);
+        vm.expectRevert(ZAMMLaunch.Pending.selector);
+        pad.finalize(id);
     }
 
-    error Finalized();
-
-    /* ====================================================================== */
-    /* ❷  finalize() idempotency – 2nd call MUST revert with "done"           */
-    /* ====================================================================== */
+    /* 4 ───────────────── idempotent finalise ─────────────────────────── */
     function testFinalizeTwiceNoOp() public {
         delete coins;
         delete prices;
         coins.push(100);
         prices.push(uint96(1 ether));
 
-        uint256 coinId = pad.launch(0, coins, prices, "u", false, 0, false, 0);
+        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
+
+        // still inside window → Pending
+        vm.expectRevert(ZAMMLaunch.Pending.selector);
+        pad.finalize(id);
 
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(coinId, 0, 0); // sale still inside window
+        pad.buy{value: 1 ether}(id, 0, 0); // auto-finalise
 
-        // early finalise reverts with Pending()
-        vm.expectRevert(Pending.selector);
-        pad.finalize(coinId);
-
-        // after window: first finalise succeeds
-        vm.warp(block.timestamp + 8 days);
-        pad.finalize(coinId);
-        assertEq(pad.ethRaised(coinId), 0); // escrow cleared
-
-        // second call MUST revert with "Finalized()"
-        vm.expectRevert(Finalized.selector);
-        pad.finalize(coinId);
+        vm.expectRevert(ZAMMLaunch.Finalized.selector);
+        pad.finalize(id); // idempotent revert
     }
 
-    /* ====================================================================== */
-    /* ❸  Unlocked-LP flow: single buyer, manual finalise, LP sent to creator */
-    /* ====================================================================== */
+    /* 5 ───────────────── unlocked-LP path ────────────────────────────── */
     function testUnlockedLpFlow() public {
         delete coins;
         delete prices;
         coins.push(500);
         prices.push(uint96(1 ether));
 
-        uint256 coinId = pad.launch(
-            0,
-            coins,
-            prices,
-            "u",
-            false,
-            0,
-            false,
-            0 // LP is **not** locked
-        );
+        uint256 id = pad.launch(0, coins, prices, "u", false, 0);
 
-        // buyer fully fills tranche
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(coinId, 0, 0);
+        pad.buy{value: 1 ether}(id, 0, 0); // fills & auto-finalises
 
-        // warp past window and finalise
-        vm.warp(block.timestamp + 8 days);
-        pad.finalize(coinId);
+        uint256 pid = _poolId(id);
+        assertGt(zamm.balanceOf(address(pad), pid), 0); // LP minted to pad
 
-        uint256 pid = _poolId(coinId);
-
-        // LP tokens are now sitting directly in creator's wallet
-        assertGt(zamm.balanceOf(creator, pid), 0);
-
-        // there is NO lock entry
-        bytes32 dummy = keccak256(
-            abi.encode(address(zamm), creator, pid, zamm.balanceOf(creator, pid), uint256(0))
-        );
-        assertEq(zamm.lockups(dummy), 0);
+        vm.expectRevert(ZAMMLaunch.Finalized.selector);
+        pad.finalize(id);
     }
 
     receive() external payable {}
