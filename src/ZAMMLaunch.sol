@@ -137,7 +137,7 @@ contract ZAMMLaunch {
 
         emit Buy(msg.sender, coinId, msg.value, coinsOut);
 
-        /* auto-finalize if no coins left (account for wei remainder) */
+        /* auto-finalize if no coins left */
         if (Z.balanceOf(address(this), coinId) == S.coinsSold) _finalize(S, coinId);
     }
 
@@ -151,7 +151,6 @@ contract ZAMMLaunch {
         if (S.creator == address(0) || trancheIdx >= S.trancheCoins.length) return 0;
 
         uint96 ethTotal = S.tranchePrice[trancheIdx];
-        uint56 dl = S.deadlines[trancheIdx];
 
         bytes32 orderHash = keccak256(
             abi.encode(
@@ -162,7 +161,7 @@ contract ZAMMLaunch {
                 address(0),
                 0,
                 ethTotal,
-                dl,
+                S.deadlines[trancheIdx],
                 true
             )
         );
@@ -194,16 +193,18 @@ contract ZAMMLaunch {
     function _finalize(Sale storage S, uint256 coinId) internal {
         if (S.creator == address(0)) return;
 
+        uint256 escrow = S.ethRaised;
+        uint256 coinBal = S.coinsSold;
+        require(escrow != 0, NoRaise());
+
         delete S.creator;
+        delete S.deadlineLast;
+        delete S.coinId;
         delete S.trancheCoins;
         delete S.tranchePrice;
         delete S.deadlines;
-
-        uint256 escrow = S.ethRaised;
-        uint256 coinBal = S.coinsSold;
         delete S.ethRaised;
         delete S.coinsSold;
-        require(escrow != 0, NoRaise());
 
         IZAMM.PoolKey memory key = IZAMM.PoolKey({
             id0: 0,
