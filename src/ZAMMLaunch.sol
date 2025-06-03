@@ -100,23 +100,26 @@ contract ZAMMLaunch {
     error Finalized();
     error InvalidMsgVal();
 
-    /// @param fillPart 0 = take remainder, else exact ETH (must equal msg.value).
-    function buy(uint256 coinId, uint256 trancheIdx, uint96 fillPart)
-        public
-        payable
-        returns (uint128 coinsOut)
-    {
+    function buy(uint256 coinId, uint256 trancheIdx) public payable returns (uint128 coinsOut) {
         Sale storage S = sales[coinId];
         require(S.creator != address(0), Finalized());
         require(trancheIdx < S.trancheCoins.length, BadIndex());
-        require(fillPart == 0 ? msg.value != 0 : msg.value == fillPart, InvalidMsgVal());
 
         uint96 coinsIn = S.trancheCoins[trancheIdx];
         uint96 ethOut = S.tranchePrice[trancheIdx];
         uint56 dl = S.deadlines[trancheIdx];
 
         Z.fillOrder{value: msg.value}(
-            address(this), address(Z), coinId, coinsIn, address(0), 0, ethOut, dl, true, fillPart
+            address(this),
+            address(Z),
+            coinId,
+            coinsIn,
+            address(0),
+            0,
+            ethOut,
+            dl,
+            true,
+            uint96(msg.value)
         );
 
         unchecked {
@@ -133,6 +136,36 @@ contract ZAMMLaunch {
 
         /* auto-finalize if no coins left (account for wei remainder) */
         if (Z.balanceOf(address(this), coinId) == S.coinsSold) _finalize(S, coinId);
+    }
+
+    /// @notice Remaining wei to fill a given tranche order (0 if sold-out or finalized).
+    function trancheRemainingWei(uint256 coinId, uint256 trancheIdx)
+        public
+        view
+        returns (uint96 weiRemaining)
+    {
+        Sale storage S = sales[coinId];
+        if (S.creator == address(0) || trancheIdx >= S.trancheCoins.length) return 0;
+
+        uint96 ethTotal = S.tranchePrice[trancheIdx];
+        uint56 dl = S.deadlines[trancheIdx];
+
+        bytes32 orderHash = keccak256(
+            abi.encode(
+                address(this),
+                address(Z),
+                coinId,
+                S.trancheCoins[trancheIdx],
+                address(0),
+                0,
+                ethTotal,
+                dl,
+                true
+            )
+        );
+
+        (,,, uint96 outDone) = Z.orders(orderHash);
+        if (ethTotal > outDone) weiRemaining = ethTotal - outDone;
     }
 
     receive() external payable {}
@@ -211,6 +244,12 @@ interface IZAMM {
         bool partialFill,
         uint96 fillPart
     ) external payable;
+
+    /* ── Order-book view ── */
+    function orders(bytes32 orderHash)
+        external
+        view
+        returns (bool, /*partialFill*/ uint56, /*deadline*/ uint96, /*inDone*/ uint96); /*outDone*/
 
     /* ── Liquidity ── */
     struct PoolKey {

@@ -64,7 +64,7 @@ contract ZAMMLaunchpadTest is Test {
 
         /* buyer-1 fills first tranche (600 coins ↔ 1 ETH) */
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(coinId, 0, 0);
+        pad.buy{value: 1 ether}(coinId, 0);
 
         /* 2 000 coins minted (saleSupply×2). 600 sold → 1 400 remain pre-finalize */
         assertEq(zamm.balanceOf(address(pad), coinId), 1_400);
@@ -97,13 +97,13 @@ contract ZAMMLaunchpadTest is Test {
         uint256 id = pad.launch(0, coins, prices, "u", false, 0);
 
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(id, 0, 1 ether); // half the tranche
+        pad.buy{value: 1 ether}(id, 0); // half the tranche
 
         (,,, uint128 raisedHalf,) = pad.sales(id);
         assertEq(raisedHalf, 1 ether);
 
         vm.prank(buyer2);
-        pad.buy{value: 1 ether}(id, 0, 0); // take remainder → auto-finalise
+        pad.buy{value: 1 ether}(id, 0); // take remainder → auto-finalise
 
         (,,, uint128 raisedFin,) = pad.sales(id);
         assertEq(raisedFin, 0); // escrow swept to LP
@@ -140,7 +140,7 @@ contract ZAMMLaunchpadTest is Test {
         pad.finalize(id);
 
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(id, 0, 0); // auto-finalise
+        pad.buy{value: 1 ether}(id, 0); // auto-finalise
 
         vm.expectRevert(ZAMMLaunch.Finalized.selector);
         pad.finalize(id); // idempotent revert
@@ -156,13 +156,40 @@ contract ZAMMLaunchpadTest is Test {
         uint256 id = pad.launch(0, coins, prices, "u", false, 0);
 
         vm.prank(buyer1);
-        pad.buy{value: 1 ether}(id, 0, 0); // fills & auto-finalises
+        pad.buy{value: 1 ether}(id, 0); // fills & auto-finalises
 
         uint256 pid = _poolId(id);
         assertGt(zamm.balanceOf(address(pad), pid), 0); // LP minted to pad
 
         vm.expectRevert(ZAMMLaunch.Finalized.selector);
         pad.finalize(id);
+    }
+
+    /* 6 ───────────────── trancheRemainingWei helper ───────────────────── */
+    function testTrancheRemainingWei() public {
+        /* single-tranche sale: 1 000 coins ↔ 2 ETH */
+        delete coins;
+        delete prices;
+        coins.push(1_000);
+        prices.push(uint96(2 ether));
+
+        uint256 coinId = pad.launch(0, coins, prices, "u", false, 0);
+
+        /* 0.  untouched → full 2 ETH still needed */
+        assertEq(uint256(pad.trancheRemainingWei(coinId, 0)), 2 ether);
+
+        /* 1. buyer-1 takes exactly 1 ETH worth (explicit fillPart) */
+        vm.prank(buyer1);
+        pad.buy{value: 1 ether}(coinId, 0);
+        assertEq(uint256(pad.trancheRemainingWei(coinId, 0)), 1 ether);
+
+        /* 2. buyer-2 takes the remainder (fillPart = 0) → auto-finalise */
+        vm.prank(buyer2);
+        pad.buy{value: 1 ether}(coinId, 0);
+        assertEq(uint256(pad.trancheRemainingWei(coinId, 0)), 0);
+
+        /* 3. sanity: wrong idx / finalised sale both return 0 */
+        assertEq(uint256(pad.trancheRemainingWei(coinId, 1)), 0);
     }
 
     receive() external payable {}
