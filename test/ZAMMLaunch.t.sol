@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 import {ZAMM} from "../src/ZAMM.sol";
-import {ZAMMLaunch} from "../src/ZAMMLaunch.sol";
+import {ZAMMLaunch} from "../periphery/ZAMMLaunch.sol";
 
 contract ZAMMLaunchpadTest is Test {
     /* ── deployed artefacts ── */

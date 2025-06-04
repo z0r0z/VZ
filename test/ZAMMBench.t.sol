@@ -283,7 +283,7 @@ contract ZAMMBenchTest is Test {
     address constant usdt = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address constant weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    address constant vitalik = 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045;
+    address constant ben = 0x91364516D3CAD16E1666261dbdbb39c881Dbe9eE;
     address constant usdcWhale = 0xF977814e90dA44bFA03b6295A0616a897441aceC;
 
     MockERC20 erc20;
@@ -291,13 +291,13 @@ contract ZAMMBenchTest is Test {
     function setUp() public {
         vm.createSelectFork(vm.rpcUrl("main")); // Ethereum mainnet fork.
         erc20 = new MockERC20("TEST", "TEST", 18);
-        erc20.mint(vitalik, 1_000_000 ether);
+        erc20.mint(ben, 1_000_000 ether);
         erc20.mint(usdcWhale, 1_000_000 ether);
 
         zamm = IZAMM(payable(address(new ZAMM())));
 
         // Approvals
-        vm.startPrank(vitalik);
+        vm.startPrank(ben);
         erc20.approve(address(zamm), type(uint256).max);
         erc20.approve(address(v2), type(uint256).max);
         erc20.approve(address(v3Router), type(uint256).max);
@@ -307,14 +307,14 @@ contract ZAMMBenchTest is Test {
         vm.stopPrank();
 
         // Setup ZAMM pool (eth <> mock20)
-        vm.prank(vitalik);
+        vm.prank(ben);
         zamm.addLiquidity{value: 10 ether}(
             PoolKey(0, 0, address(0), address(erc20), 30),
             10 ether,
             10_000 ether,
             0,
             0,
-            vitalik,
+            ben,
             block.timestamp
         );
         vm.stopPrank();
@@ -358,9 +358,9 @@ contract ZAMMBenchTest is Test {
         vm.prank(usdcWhale);
         v2.addLiquidity(token0, token1, 10 ether, 10_000 * 1e6, 0, 0, usdcWhale, block.timestamp);
 
-        vm.prank(vitalik);
+        vm.prank(ben);
         v2.addLiquidityETH{value: 10 ether}(
-            address(erc20), 10_000 ether, 0, 0, vitalik, block.timestamp
+            address(erc20), 10_000 ether, 0, 0, ben, block.timestamp
         );
 
         vm.startPrank(usdcWhale);
@@ -384,7 +384,7 @@ contract ZAMMBenchTest is Test {
             ? 79228162514264337593543950336 // If TEST is token0, price = 1/1000
             : 2505414483750479311864138677; // If WETH is token0, price = 1000
 
-        vm.prank(vitalik);
+        vm.prank(ben);
         try positionManager.createAndInitializePoolIfNecessary(token0, token1, fee, sqrtPriceX96) {
             // Pool created successfully
         } catch {
@@ -396,7 +396,7 @@ contract ZAMMBenchTest is Test {
         int24 tickUpper = 887220; // Max tick for full range
 
         // Add liquidity to V3 pool
-        vm.prank(vitalik);
+        vm.prank(ben);
         try positionManager.mint{value: 10 ether}(
             INonfungiblePositionManager.MintParams({
                 token0: token0,
@@ -408,7 +408,7 @@ contract ZAMMBenchTest is Test {
                 amount1Desired: address(erc20) < weth ? 10 ether : 10_000 ether,
                 amount0Min: 0,
                 amount1Min: 0,
-                recipient: vitalik,
+                recipient: ben,
                 deadline: block.timestamp
             })
         ) {
@@ -462,8 +462,8 @@ contract ZAMMBenchTest is Test {
         path[0] = weth;
         path[1] = address(erc20);
 
-        vm.prank(vitalik);
-        v2.swapExactETHForTokens{value: 0.1 ether}(0, path, vitalik, block.timestamp);
+        vm.prank(ben);
+        v2.swapExactETHForTokens{value: 0.1 ether}(0, path, ben, block.timestamp);
     }
 
     function testV2MultihopExactInEthForToken() public {
@@ -473,17 +473,17 @@ contract ZAMMBenchTest is Test {
         path[2] = usdc;
 
         vm.prank(usdcWhale);
-        v2.swapExactETHForTokens{value: 0.1 ether}(0, path, vitalik, block.timestamp);
+        v2.swapExactETHForTokens{value: 0.1 ether}(0, path, ben, block.timestamp);
     }
 
     function testV3SingleExactInEthForToken() public {
-        vm.prank(vitalik);
+        vm.prank(ben);
 
         IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter.ExactInputSingleParams({
             tokenIn: weth,
             tokenOut: address(erc20),
             fee: 3000, // 0.3% fee tier
-            recipient: vitalik,
+            recipient: ben,
             deadline: block.timestamp,
             amountIn: 0.1 ether,
             amountOutMinimum: 0,
@@ -494,7 +494,7 @@ contract ZAMMBenchTest is Test {
     }
 
     function testV3MultihopExactInEthForToken() public {
-        vm.prank(vitalik);
+        vm.prank(ben);
 
         // For V3 multihop, we need to encode the path: ETH -> ERC20 -> USDC
         // The format is (token0, fee, token1, fee, token2)
@@ -508,7 +508,7 @@ contract ZAMMBenchTest is Test {
 
         IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
             path: path,
-            recipient: vitalik,
+            recipient: ben,
             deadline: block.timestamp,
             amountIn: 0.1 ether,
             amountOutMinimum: 0
@@ -518,14 +518,9 @@ contract ZAMMBenchTest is Test {
     }
 
     function testZammSingleExactInEthForToken() public {
-        vm.prank(vitalik);
+        vm.prank(ben);
         zamm.swapExactIn{value: 0.1 ether}(
-            PoolKey(0, 0, address(0), address(erc20), 30),
-            0.1 ether,
-            0,
-            true,
-            vitalik,
-            block.timestamp
+            PoolKey(0, 0, address(0), address(erc20), 30), 0.1 ether, 0, true, ben, block.timestamp
         );
     }
 

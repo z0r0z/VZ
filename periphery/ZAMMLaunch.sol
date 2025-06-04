@@ -95,6 +95,36 @@ contract ZAMMLaunch {
         }
     }
 
+    function coinWithPool(
+        uint256 poolSupply,
+        uint256 creatorSupply,
+        uint256 creatorUnlock,
+        string calldata uri
+    ) public payable returns (uint256 coinId, uint256 lp) {
+        coinId = Z.coin(address(this), poolSupply + creatorSupply, uri);
+
+        if (creatorSupply != 0) {
+            // lock if forward-looking
+            if (creatorUnlock > block.timestamp) {
+                Z.lockup(address(Z), msg.sender, coinId, creatorSupply, creatorUnlock);
+            } else {
+                Z.transfer(msg.sender, coinId, creatorSupply);
+            }
+        }
+
+        IZAMM.PoolKey memory key = IZAMM.PoolKey({
+            id0: 0,
+            id1: coinId,
+            token0: address(0),
+            token1: address(Z),
+            feeOrHook: DEFAULT_FEE_BPS
+        });
+
+        (,, lp) = Z.addLiquidity{value: msg.value}(
+            key, msg.value, poolSupply, 0, 0, msg.sender, block.timestamp
+        );
+    }
+
     /* ===================================================================== //
                                   B U Y
     // =====================================================================*/
@@ -104,6 +134,7 @@ contract ZAMMLaunch {
     error InvalidMsgVal();
 
     function buy(uint256 coinId, uint256 trancheIdx) public payable returns (uint128 coinsOut) {
+        _lock(); // transient guard
         Sale storage S = sales[coinId];
         require(S.creator != address(0), Finalized());
         require(trancheIdx < S.trancheCoins.length, BadIndex());
@@ -168,10 +199,20 @@ contract ZAMMLaunch {
         if (ethTotal > outDone) weiRemaining = ethTotal - outDone;
     }
 
+    /// @dev Only launchpad can fill orders.
+    function _lock() internal {
+        assembly ("memory-safe") {
+            tstore(0x00, address())
+        }
+    }
+
     error Unauthorized();
 
     receive() external payable {
         require(msg.sender == address(Z), Unauthorized());
+        assembly ("memory-safe") {
+            if iszero(tload(0x00)) { revert(codesize(), 0x00) }
+        }
     }
 
     /* ===================================================================== //
