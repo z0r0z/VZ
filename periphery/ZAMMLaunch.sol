@@ -205,7 +205,7 @@ contract ZAMMLaunch {
             )
         );
 
-        // If the order has been deleted (deadline==0), treat as fully sold.
+        // If the order has been deleted (deadline==0), treat as sold
         (, uint56 deadline, , uint96 outDone) = Z.orders(orderHash);
         if (deadline == 0) {
             return 0;
