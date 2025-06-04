@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
@@ -25,8 +25,8 @@ contract ZAMMTest is Test {
 
     uint256 constant INITIAL_SUPPLY = 1000e18;
     uint256 constant MINIMUM_LIQUIDITY = 1000;
-    uint96 constant FEE = 30; // 0.3%
-    uint96 constant SWAP_FEE = 30; // 0.3%
+    uint256 constant FEE = 30; // 0.3%
+    uint256 constant SWAP_FEE = 30; // 0.3%
 
     function setUp() public {
         // Deploy the tokens
@@ -85,7 +85,7 @@ contract ZAMMTest is Test {
     }
 
     // Helper function to create pool keys for different token combinations
-    function _createERC20PoolKey(address tokenFirst, address tokenSecond, uint96 swapFee)
+    function _createERC20PoolKey(address tokenFirst, address tokenSecond, uint256 swapFee)
         internal
         pure
         returns (ZAMM.PoolKey memory)
@@ -93,17 +93,18 @@ contract ZAMMTest is Test {
         (address tokenMin, address tokenMax) =
             tokenFirst < tokenSecond ? (tokenFirst, tokenSecond) : (tokenSecond, tokenFirst);
 
-        return ZAMM.PoolKey({id0: 0, id1: 0, token0: tokenMin, token1: tokenMax, swapFee: swapFee});
+        return
+            ZAMM.PoolKey({id0: 0, id1: 0, token0: tokenMin, token1: tokenMax, feeOrHook: swapFee});
     }
 
-    function _createERC6909PoolKey(address token, uint256 id0, uint256 id1, uint96 swapFee)
+    function _createERC6909PoolKey(address token, uint256 id0, uint256 id1, uint256 swapFee)
         internal
         pure
         returns (ZAMM.PoolKey memory)
     {
         require(id0 < id1, "Invalid token IDs order");
 
-        return ZAMM.PoolKey({id0: id0, id1: id1, token0: token, token1: token, swapFee: swapFee});
+        return ZAMM.PoolKey({id0: id0, id1: id1, token0: token, token1: token, feeOrHook: swapFee});
     }
 
     // Helper function to get pool information
@@ -114,7 +115,7 @@ contract ZAMMTest is Test {
     }
 
     function testApprove() public {
-        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        uint256 coinId = zamm.coin(address(this), 1 ether, "test");
         require(zamm.approve(alice, coinId, 0.5 ether));
     }
 
@@ -123,12 +124,12 @@ contract ZAMMTest is Test {
     }
 
     function testTransfer() public {
-        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        uint256 coinId = zamm.coin(address(this), 1 ether, "test");
         require(zamm.transfer(alice, coinId, 0.5 ether));
     }
 
     function testTransferFrom() public {
-        uint256 coinId = zamm.make(address(this), 1 ether, "test");
+        uint256 coinId = zamm.coin(address(this), 1 ether, "test");
         zamm.setOperator(address(this), true);
         require(zamm.transferFrom(address(this), alice, coinId, 0.5 ether));
     }
@@ -440,7 +441,7 @@ contract ZAMMTest is Test {
         poolKey.token1 = address(token6909);
         poolKey.id0 = tokenId1;
         poolKey.id1 = tokenId2;
-        poolKey.swapFee = FEE;
+        poolKey.feeOrHook = FEE;
 
         // Get pool ID
         uint256 poolId = _getPoolId(poolKey);
@@ -611,51 +612,6 @@ contract ZAMMTest is Test {
         );
     }
 
-    function test_Multicall() public {
-        // Create the pool first
-        uint256 amount0 = 10e18;
-        uint256 amount1 = 40e18;
-        ZAMM.PoolKey memory poolKey = _createERC20PoolKey(address(tokenA), address(tokenB), FEE);
-
-        // Encode calls for a multicall
-        bytes[] memory data = new bytes[](2);
-
-        // 1. Add liquidity
-        data[0] = abi.encodeWithSelector(
-            zamm.addLiquidity.selector,
-            poolKey,
-            amount0,
-            amount1,
-            0, // min amount0
-            0, // min amount1
-            address(this),
-            block.timestamp + 1
-        );
-
-        // 2. Swap
-        uint256 swapAmount = 1e18;
-        data[1] = abi.encodeWithSelector(
-            zamm.swapExactIn.selector,
-            poolKey,
-            swapAmount,
-            0, // minimum output
-            true, // zeroForOne (token0 for token1)
-            address(this),
-            block.timestamp + 1
-        );
-
-        // Execute multicall
-        zamm.multicall(data);
-
-        // Verify the operations happened
-        uint256 poolId = _getPoolId(poolKey);
-        (uint112 reserve0, uint112 reserve1,) = _getPoolInfo(poolId);
-
-        // Should reflect both operations: add liquidity and then swap
-        assertGt(reserve0, amount0, "Reserve0 not updated after multicall");
-        assertLt(reserve1, amount1, "Reserve1 not updated after multicall");
-    }
-
     /// @notice Should revert if you send the wrong ETH or send ETH while depositing an ERC‑20
     function test_Deposit_RevertOnBadValue() public {
         // wrong ETH amount for ETH‐deposit
@@ -665,55 +621,6 @@ contract ZAMMTest is Test {
         // any ETH for an ERC‑20 deposit
         vm.expectRevert(ZAMM.InvalidMsgVal.selector);
         zamm.deposit{value: 1}(address(tokenA), 0, 1);
-    }
-
-    /// @notice ERC‑20 deposit + swap in one multicall should only pull tokens once
-    function test_CreditSwapExactIn_ERC20() public {
-        // 1) Deploy pool with 10 A : 40 B
-        ZAMM.PoolKey memory pk = _createERC20PoolKey(address(tokenA), address(tokenB), FEE);
-        uint256 poolId = _getPoolId(pk);
-        zamm.addLiquidity(pk, 10e18, 40e18, 0, 0, address(this), block.timestamp + 1);
-
-        // Figure out which is token0/token1
-        address t0 = pk.token0;
-        address t1 = pk.token1;
-        uint256 id0 = pk.id0;
-
-        // 2) Pick an in‑amount
-        uint256 inAmt = 1e18;
-
-        // 3) Read the *pre‑swap* reserves
-        (uint112 pre0, uint112 pre1,) = _getPoolInfo(poolId);
-
-        // 4) Compute exactly what the AMM will pay you
-        uint256 expectedOut = _getAmountOut(inAmt, pre0, pre1, FEE);
-
-        // 5) Remember balances before
-        uint256 bal0Before = MockERC20(t0).balanceOf(address(this));
-        uint256 bal1Before = MockERC20(t1).balanceOf(address(this));
-
-        // 6) Do the “deposit+swap” in one multicall
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(zamm.deposit.selector, t0, id0, inAmt);
-        calls[1] = abi.encodeWithSelector(
-            zamm.swapExactIn.selector,
-            pk,
-            inAmt,
-            uint256(0),
-            /* zeroForOne = sell token0→token1 */
-            true,
-            address(this),
-            block.timestamp + 1
-        );
-        zamm.multicall(calls);
-
-        // 7) Check balances after
-        uint256 bal0After = MockERC20(t0).balanceOf(address(this));
-        uint256 bal1After = MockERC20(t1).balanceOf(address(this));
-
-        // We should have spent exactly inAmt of t0, and received expectedOut of t1.
-        assertEq(bal0Before - bal0After, inAmt, "spent exactly once");
-        assertEq(bal1After - bal1Before, expectedOut, "received correct amount");
     }
 
     /// @notice swapExactOut on an ETH‐pool should refund any excess msg.value
@@ -845,7 +752,8 @@ contract ZAMMTest is Test {
         // 3) plan to borrow 1 A (slot 0)
         uint256 borrowed = 1e18;
         uint256 denom = 10_000;
-        uint256 repayAmt = (borrowed * denom + (denom - key.swapFee) - 1) / (denom - key.swapFee);
+        uint256 repayAmt =
+            (borrowed * denom + (denom - key.feeOrHook) - 1) / (denom - key.feeOrHook);
 
         // 4) FUND the receiver with exactly repayAmt of *token0*
         MockERC20(key.token0).mint(address(recv), repayAmt);
@@ -870,173 +778,6 @@ contract ZAMMTest is Test {
         assertEq(MockERC20(key.token0).balanceOf(address(recv)), 0, "receiver drained");
     }
 
-    /// @dev A simple 2‑hop A→B→C swap in one multicall.
-    function test_Multihop_Multicall() public {
-        // 1) Deploy and mint a third ERC20 (C)
-        MockERC20 tokenC = new MockERC20("TokenC", "TKC", 18);
-        tokenC.mint(address(this), INITIAL_SUPPLY);
-        tokenC.approve(address(zamm), type(uint256).max);
-
-        // 2) Seed two pools: A/B and B/C with equal reserves so math is simple
-        ZAMM.PoolKey memory pkAB = _createERC20PoolKey(address(tokenA), address(tokenB), FEE);
-        ZAMM.PoolKey memory pkBC = _createERC20PoolKey(address(tokenB), address(tokenC), FEE);
-
-        //   A/B = 10 A : 10 B
-        zamm.addLiquidity(pkAB, 10e18, 10e18, 0, 0, address(this), block.timestamp + 1);
-        //   B/C = 10 B : 10 C
-        zamm.addLiquidity(pkBC, 10e18, 10e18, 0, 0, address(this), block.timestamp + 1);
-
-        // 3) Decide to send in 1 A
-        uint256 inA = 1e18;
-        uint256 beforeC = tokenC.balanceOf(address(this));
-
-        // 4) Pre‑compute what A→B then B→C should give us
-        uint256 abOut = _getAmountOut(inA, 10e18, 10e18, FEE); // amount of B
-        uint256 bcOut = _getAmountOut(abOut, 10e18, 10e18, FEE); // amount of C
-
-        // 5) Build a 4‑step multicall:
-        //    [0] deposit A
-        //    [1] swapExactIn A→B
-        //    [2] deposit B
-        //    [3] swapExactIn B→C
-        bytes[] memory calls = new bytes[](4);
-        calls[0] = abi.encodeWithSelector(
-            zamm.deposit.selector,
-            address(tokenA),
-            /* id */
-            0,
-            inA
-        );
-        calls[1] = abi.encodeWithSelector(
-            zamm.swapExactIn.selector,
-            pkAB,
-            inA,
-            /* amountOutMin */
-            0,
-            /* zeroForOne */
-            true,
-            address(this),
-            block.timestamp + 1
-        );
-        calls[2] = abi.encodeWithSelector(
-            zamm.deposit.selector,
-            address(tokenB),
-            /* id */
-            0,
-            abOut
-        );
-        calls[3] = abi.encodeWithSelector(
-            zamm.swapExactIn.selector,
-            pkBC,
-            abOut,
-            /* amountOutMin */
-            0,
-            /* zeroForOne */
-            true,
-            address(this),
-            block.timestamp + 1
-        );
-
-        // 6) Execute the multicall and decode the two swap results
-        bytes[] memory results = zamm.multicall(calls);
-        uint256 actualAB = abi.decode(results[1], (uint256));
-        uint256 actualBC = abi.decode(results[3], (uint256));
-
-        // 7) Check the intermediate and final outputs match our expectations
-        assertEq(actualAB, abOut, "A-B output mismatch");
-        assertEq(actualBC, bcOut, "B-C output mismatch");
-
-        // 8) Finally, confirm our C‑balance rose by exactly bcOut
-        uint256 afterC = tokenC.balanceOf(address(this));
-        assertEq(afterC - beforeC, bcOut, "Final C balance mismatch");
-    }
-
-    function test_MakeLiquid() public {
-        // Test parameters
-        address maker = alice;
-        address liqTo = bob;
-        uint256 mkrAmt = 5e18; // Initial token amount for the maker
-        uint256 liqAmt = 20e18; // Amount of token to provide as liquidity
-        uint256 ethAmt = 1e18; // ETH amount to provide as liquidityx
-        uint96 swapFee = FEE; // Use the same fee as other tests (30 = 0.3%)
-        string memory uri = "test-token-uri";
-
-        // We don't need to record initial balances as they should be zero for new tokens/pools
-
-        // Get initial ETH balance
-        uint256 contractETHBefore = address(zamm).balance;
-
-        // Execute makeLiquid with ETH
-        (uint256 coinId, uint256 poolId, uint256 liquidity) =
-            zamm.makeLiquid{value: ethAmt}(maker, liqTo, mkrAmt, liqAmt, swapFee, uri);
-
-        // Verify token creation
-        assertGt(coinId, 0, "Should have created a token ID");
-        assertGt(poolId, 0, "Should have created a pool ID");
-        assertGt(liquidity, 0, "Should have created liquidity tokens");
-
-        // Verify token balances
-        uint256 makerBalance = zamm.balanceOf(maker, coinId);
-        assertEq(makerBalance, mkrAmt, "Maker should have received token amount");
-
-        // Verify liquidity tokens were minted to liqTo
-        uint256 liqToBalance = zamm.balanceOf(liqTo, poolId);
-        assertEq(liqToBalance, liquidity, "LiqTo should have received liquidity tokens");
-
-        // Verify ETH was transferred to the contract
-        assertEq(
-            address(zamm).balance, contractETHBefore + ethAmt, "Contract should have received ETH"
-        );
-
-        // Check pool reserves
-        (uint112 reserve0, uint112 reserve1, uint256 supply) = _getPoolInfo(poolId);
-        assertEq(reserve0, ethAmt, "Reserve0 should match ETH amount");
-        assertEq(reserve1, liqAmt, "Reserve1 should match token liquidity amount");
-        assertEq(
-            supply, liquidity + MINIMUM_LIQUIDITY, "Supply should be liquidity + MINIMUM_LIQUIDITY"
-        );
-
-        // Check pool key structure matches expectations
-        ZAMM.PoolKey memory expectedPoolKey = ZAMM.PoolKey({
-            id0: 0,
-            id1: coinId,
-            token0: address(0), // ETH
-            token1: address(zamm), // The ZAMM contract itself
-            swapFee: swapFee
-        });
-
-        uint256 calculatedPoolId = _getPoolId(expectedPoolKey);
-        assertEq(poolId, calculatedPoolId, "Pool ID should match the expected value");
-
-        // Test that we can swap using the new pool
-        uint256 swapAmt = 0.1e18;
-        uint256 minOut = 0;
-
-        // Expected output based on constant product formula
-        uint256 expectedOut = _getAmountOut(swapAmt, reserve0, reserve1, swapFee);
-
-        // Execute a swap (ETH for the newly created token)
-        uint256 actualOut = zamm.swapExactIn{value: swapAmt}(
-            expectedPoolKey,
-            swapAmt,
-            minOut,
-            true, // zeroForOne = true means ETH → token
-            address(this),
-            block.timestamp + 1
-        );
-
-        assertEq(actualOut, expectedOut, "Swap output should match expected amount");
-
-        // Verify that we received the token from the swap
-        uint256 ourTokenBalance = zamm.balanceOf(address(this), coinId);
-        assertEq(ourTokenBalance, actualOut, "Should have received tokens from swap");
-
-        // Execute a swap (ETH for the newly created token)
-        zamm.swapExactIn(
-            expectedPoolKey, actualOut - 10000, minOut, false, bob, block.timestamp + 1
-        );
-    }
-
     // Helper functions
     function sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
@@ -1051,7 +792,7 @@ contract ZAMMTest is Test {
         }
     }
 
-    function _getAmountOut(uint256 amountIn, uint112 reserveIn, uint112 reserveOut, uint96 swapFee)
+    function _getAmountOut(uint256 amountIn, uint112 reserveIn, uint112 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256)
@@ -1062,7 +803,7 @@ contract ZAMMTest is Test {
         return numerator / denominator;
     }
 
-    function _getAmountIn(uint256 amountOut, uint112 reserveIn, uint112 reserveOut, uint96 swapFee)
+    function _getAmountIn(uint256 amountOut, uint112 reserveIn, uint112 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256)
@@ -1075,7 +816,7 @@ contract ZAMMTest is Test {
     /// @dev Compute the same poolId for a PoolKey that lives in memory.
     function _getPoolId(ZAMM.PoolKey memory poolKey) internal pure returns (uint256 pid) {
         assembly ("memory-safe") {
-            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,swapFee) = 0xa0 bytes
+            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,feeOrHook) = 0xa0 bytes
             pid := keccak256(poolKey, 0xa0)
         }
     }
@@ -1107,7 +848,7 @@ contract ReentrantRemove {
     /// @dev Compute the same poolId for a PoolKey that lives in memory.
     function _getPoolId(ZAMM.PoolKey memory poolKey) internal pure returns (uint256 pid) {
         assembly ("memory-safe") {
-            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,swapFee) = 0xa0 bytes
+            // A PoolKey is five 32‐byte words (id0,id1,token0,token1,feeOrHook) = 0xa0 bytes
             pid := keccak256(poolKey, 0xa0)
         }
     }
@@ -1151,7 +892,7 @@ contract FlashReceiver {
         // repay slot0 if we borrowed it
         if (a0Out > 0) {
             // compute the exact repayAmt (ceiling)
-            uint256 repay0 = (a0Out * denom + (denom - pk.swapFee) - 1) / (denom - pk.swapFee);
+            uint256 repay0 = (a0Out * denom + (denom - pk.feeOrHook) - 1) / (denom - pk.feeOrHook);
 
             // 1) deposit into the pair’s transient slot to satisfy the invariant
             zamm.deposit(pk.token0, pk.id0, repay0);
@@ -1163,7 +904,7 @@ contract FlashReceiver {
 
         // same logic if you ever borrow slot1
         if (a1Out > 0) {
-            uint256 repay1 = (a1Out * denom + (denom - pk.swapFee) - 1) / (denom - pk.swapFee);
+            uint256 repay1 = (a1Out * denom + (denom - pk.feeOrHook) - 1) / (denom - pk.feeOrHook);
             zamm.deposit(pk.token1, pk.id1, repay1);
             MockERC20(pk.token1).transfer(tx.origin, a1Out);
         }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.30;
 
 import "./ZERC6909.sol";
 import "./utils/Math.sol";
@@ -7,10 +7,19 @@ import "./utils/TransferHelper.sol";
 
 // maximally simple constant product AMM singleton
 // minted by z0r0z as concentric liquidity backend
+// with a native coin path for efficient pool swap
+// as well as embedded orderbook and timelock mech
 contract ZAMM is ZERC6909 {
+    // constants
     uint256 constant MINIMUM_LIQUIDITY = 1000;
     uint256 constant MAX_FEE = 10000; // 100%
 
+    // - hook flags
+    uint256 constant FLAG_BEFORE = 1 << 255;
+    uint256 constant FLAG_AFTER = 1 << 254;
+    uint256 constant ADDR_MASK = (1 << 160) - 1;
+
+    // storage
     mapping(uint256 poolId => Pool) public pools;
 
     struct PoolKey {
@@ -18,7 +27,7 @@ contract ZAMM is ZERC6909 {
         uint256 id1;
         address token0;
         address token1;
-        uint96 swapFee;
+        uint256 feeOrHook; // bps-fee OR flags|address
     }
 
     struct Pool {
@@ -72,13 +81,15 @@ contract ZAMM is ZERC6909 {
         }
     }
 
-    function _safeTransferFrom(address token, uint256 id, uint256 amount) internal {
+    function _safeTransferFrom(address token, address from, address to, uint256 id, uint256 amount)
+        internal
+    {
         if (token == address(this)) {
-            _burn(id, amount);
+            _burn(from, id, amount);
         } else if (id == 0) {
-            safeTransferFrom(token, amount);
+            safeTransferFrom(token, from, to, amount);
         } else {
-            ZERC6909(token).transferFrom(msg.sender, address(this), id, amount);
+            ZERC6909(token).transferFrom(from, to, id, amount);
         }
     }
 
@@ -111,7 +122,7 @@ contract ZAMM is ZERC6909 {
 
     error Overflow();
 
-    // update reserves and, on the first call per block, price accumulators for the given pool `poolId`
+    // update reserves and, on the first call per block, price accumulators for the given `poolId`
     function _update(
         Pool storage pool,
         uint256 poolId,
@@ -135,6 +146,37 @@ contract ZAMM is ZERC6909 {
             pool.blockTimestampLast = blockTimestamp;
             emit Sync(poolId, pool.reserve0 = uint112(balance0), pool.reserve1 = uint112(balance1));
         }
+    }
+
+    // decode polymorphic `feeOrHook` field
+    function _decode(uint256 v)
+        internal
+        pure
+        returns (uint256 feeBps, address hook, bool pre, bool post)
+    {
+        if (v <= MAX_FEE) {
+            feeBps = v;
+        } else {
+            hook = address(uint160(v));
+            pre = (v & FLAG_BEFORE) != 0;
+            post = (v & FLAG_AFTER) != 0;
+            if (!pre) if (!post) post = true; // default = after-only
+        }
+    }
+
+    // dispatch after-action hook
+    function _postHook(
+        bytes4 sig,
+        uint256 poolId,
+        address sender,
+        int256 d0,
+        int256 d1,
+        int256 dLiq,
+        bytes memory data,
+        address hook
+    ) internal {
+        if (hook == address(0)) return;
+        IZAMMHook(hook).afterAction(sig, poolId, sender, d0, d1, dLiq, data);
     }
 
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
@@ -189,6 +231,14 @@ contract ZAMM is ZERC6909 {
         require(amountIn != 0, InsufficientInputAmount());
 
         uint256 poolId = _getPoolId(poolKey);
+        (uint256 feeBps, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+            if (o != 0) feeBps = o;
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
@@ -206,16 +256,18 @@ contract ZAMM is ZERC6909 {
                     require(msg.value == amountIn, InvalidMsgVal());
                 } else {
                     require(msg.value == 0, InvalidMsgVal());
-                    _safeTransferFrom(poolKey.token0, poolKey.id0, amountIn);
+                    _safeTransferFrom(
+                        poolKey.token0, msg.sender, address(this), poolKey.id0, amountIn
+                    );
                 }
             } else {
                 require(msg.value == 0, InvalidMsgVal());
-                _safeTransferFrom(poolKey.token1, poolKey.id1, amountIn);
+                _safeTransferFrom(poolKey.token1, msg.sender, address(this), poolKey.id1, amountIn);
             }
         }
 
         if (zeroForOne) {
-            amountOut = _getAmountOut(amountIn, reserve0, reserve1, poolKey.swapFee);
+            amountOut = _getAmountOut(amountIn, reserve0, reserve1, feeBps);
             require(amountOut != 0, InsufficientOutputAmount());
             require(amountOut >= amountOutMin, InsufficientOutputAmount());
             require(amountOut < reserve1, InsufficientLiquidity());
@@ -223,15 +275,43 @@ contract ZAMM is ZERC6909 {
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
             _update(pool, poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
+
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
-            amountOut = _getAmountOut(amountIn, reserve1, reserve0, poolKey.swapFee);
+            amountOut = _getAmountOut(amountIn, reserve1, reserve0, feeBps);
             require(amountOut != 0, InsufficientOutputAmount());
             require(amountOut >= amountOutMin, InsufficientOutputAmount());
             require(amountOut < reserve0, InsufficientLiquidity());
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
             _update(pool, poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
+
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -249,13 +329,21 @@ contract ZAMM is ZERC6909 {
         require(amountOut != 0, InsufficientOutputAmount());
 
         uint256 poolId = _getPoolId(poolKey);
+        (uint256 feeBps, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+            if (o != 0) feeBps = o;
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
         bool credited;
         if (zeroForOne) {
             require(amountOut < reserve1, InsufficientLiquidity());
-            amountIn = _getAmountIn(amountOut, reserve0, reserve1, poolKey.swapFee);
+            amountIn = _getAmountIn(amountOut, reserve0, reserve1, feeBps);
             require(amountIn <= amountInMax, InsufficientInputAmount());
 
             credited = _useTransientBalance(poolKey.token0, poolKey.id0, amountIn);
@@ -271,28 +359,58 @@ contract ZAMM is ZERC6909 {
                     }
                 } else {
                     require(msg.value == 0, InvalidMsgVal());
-                    _safeTransferFrom(poolKey.token0, poolKey.id0, amountIn);
+                    _safeTransferFrom(
+                        poolKey.token0, msg.sender, address(this), poolKey.id0, amountIn
+                    );
                 }
             }
 
             _safeTransfer(poolKey.token1, to, poolKey.id1, amountOut);
             _update(pool, poolId, reserve0 + amountIn, reserve1 - amountOut, reserve0, reserve1);
 
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
+
             emit Swap(poolId, msg.sender, amountIn, 0, 0, amountOut, to);
         } else {
             require(amountOut < reserve0, InsufficientLiquidity());
-            amountIn = _getAmountIn(amountOut, reserve1, reserve0, poolKey.swapFee);
+            amountIn = _getAmountIn(amountOut, reserve1, reserve0, feeBps);
             require(amountIn <= amountInMax, InsufficientInputAmount());
 
             credited = _useTransientBalance(poolKey.token1, poolKey.id1, amountIn);
 
             if (!credited) {
                 require(msg.value == 0, InvalidMsgVal());
-                _safeTransferFrom(poolKey.token1, poolKey.id1, amountIn);
+                _safeTransferFrom(poolKey.token1, msg.sender, address(this), poolKey.id1, amountIn);
             }
 
             _safeTransfer(poolKey.token0, to, poolKey.id0, amountOut);
             _update(pool, poolId, reserve0 - amountOut, reserve1 + amountIn, reserve0, reserve1);
+
+            /* ── POST hook ── */
+            if (post) {
+                _postHook(
+                    msg.sig,
+                    poolId,
+                    msg.sender,
+                    zeroForOne ? int256(amountIn) : -int256(amountOut),
+                    zeroForOne ? -int256(amountOut) : int256(amountIn),
+                    0,
+                    "",
+                    hook
+                );
+            }
 
             emit Swap(poolId, msg.sender, 0, amountIn, amountOut, 0, to);
         }
@@ -309,7 +427,16 @@ contract ZAMM is ZERC6909 {
         bytes calldata data
     ) public lock {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
+
         uint256 poolId = _getPoolId(poolKey);
+        (uint256 feeBps, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            uint256 o = IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, data);
+            if (o != 0) feeBps = o;
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
@@ -333,20 +460,34 @@ contract ZAMM is ZERC6909 {
             amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
         }
         require(amount0In > 0 || amount1In > 0, InsufficientInputAmount());
-        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * poolKey.swapFee);
-        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * poolKey.swapFee);
+        uint256 balance0Adjusted = (balance0 * 10000) - (amount0In * feeBps);
+        uint256 balance1Adjusted = (balance1 * 10000) - (amount1In * feeBps);
         require(
             balance0Adjusted * balance1Adjusted >= (uint256(reserve0) * reserve1) * 10000 ** 2, K()
         );
 
         _update(pool, poolId, balance0, balance1, reserve0, reserve1);
 
+        /* ── POST hook ── */
+        if (post) {
+            _postHook(
+                msg.sig,
+                poolId,
+                msg.sender,
+                int256(amount0In) - int256(amount0Out),
+                int256(amount1In) - int256(amount1Out),
+                0,
+                data,
+                hook
+            );
+        }
+
         emit Swap(poolId, msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
     // ** LIQ MGMT
 
-    error InvalidSwapFee();
+    error InvalidFeeOrHook();
     error InvalidPoolTokens();
     error InsufficientLiquidityMinted();
 
@@ -362,6 +503,13 @@ contract ZAMM is ZERC6909 {
         require(deadline >= block.timestamp, Expired());
 
         uint256 poolId = _getPoolId(poolKey);
+        (, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+        }
+
         Pool storage pool = pools[poolId];
 
         (uint112 reserve0, uint112 reserve1, uint256 supply) =
@@ -397,16 +545,22 @@ contract ZAMM is ZERC6909 {
 
         if (!credited) {
             if (poolKey.token0 == address(0)) {
-                require(msg.value == amount0, InvalidMsgVal());
+                require(msg.value >= amount0, InvalidMsgVal());
+                if (msg.value > amount0) {
+                    unchecked {
+                        safeTransferETH(msg.sender, msg.value - amount0);
+                    }
+                }
             } else {
                 require(msg.value == 0, InvalidMsgVal());
-                _safeTransferFrom(poolKey.token0, poolKey.id0, amount0);
+                _safeTransferFrom(poolKey.token0, msg.sender, address(this), poolKey.id0, amount0);
             }
         }
 
         credited = _useTransientBalance(poolKey.token1, poolKey.id1, amount1);
-
-        if (!credited) _safeTransferFrom(poolKey.token1, poolKey.id1, amount1);
+        if (!credited) {
+            _safeTransferFrom(poolKey.token1, msg.sender, address(this), poolKey.id1, amount1);
+        }
 
         if (supply == 0) {
             // enforce a single, canonical poolId for any unordered pair:
@@ -422,7 +576,9 @@ contract ZAMM is ZERC6909 {
                 InvalidPoolTokens()
             );
 
-            require(poolKey.swapFee <= MAX_FEE, InvalidSwapFee());
+            uint256 masked = poolKey.feeOrHook & ~(FLAG_BEFORE | FLAG_AFTER);
+            require(poolKey.feeOrHook <= MAX_FEE || (masked & ~ADDR_MASK) == 0, InvalidFeeOrHook());
+
             liquidity = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             require(liquidity != 0, InsufficientLiquidityMinted());
             _initMint(to, poolId, liquidity);
@@ -438,6 +594,21 @@ contract ZAMM is ZERC6909 {
 
         _update(pool, poolId, amount0 + reserve0, amount1 + reserve1, reserve0, reserve1);
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1;
+
+        /* ── POST hook ── */
+        if (post) {
+            _postHook(
+                msg.sig,
+                poolId,
+                msg.sender,
+                int256(amount0),
+                int256(amount1),
+                int256(liquidity),
+                "",
+                hook
+            );
+        }
+
         emit Mint(poolId, msg.sender, amount0, amount1);
     }
 
@@ -451,6 +622,13 @@ contract ZAMM is ZERC6909 {
     ) public lock returns (uint256 amount0, uint256 amount1) {
         require(deadline >= block.timestamp, Expired());
         uint256 poolId = _getPoolId(poolKey);
+        (, address hook, bool pre, bool post) = _decode(poolKey.feeOrHook);
+
+        /* ── BEFORE hook ── */
+        if (pre) {
+            IZAMMHook(hook).beforeAction(msg.sig, poolId, msg.sender, "");
+        }
+
         Pool storage pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1) = (pool.reserve0, pool.reserve1);
 
@@ -459,7 +637,7 @@ contract ZAMM is ZERC6909 {
         amount1 = mulDiv(liquidity, reserve1, pool.supply);
         require(amount0 >= amount0Min, InsufficientOutputAmount());
         require(amount1 >= amount1Min, InsufficientOutputAmount());
-        _burn(poolId, liquidity);
+        _burn(msg.sender, poolId, liquidity);
         unchecked {
             pool.supply -= liquidity;
         }
@@ -471,6 +649,21 @@ contract ZAMM is ZERC6909 {
             _update(pool, poolId, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
         }
         if (feeOn) pool.kLast = uint256(pool.reserve0) * pool.reserve1; // `reserve0` and `reserve1` are up-to-date
+
+        /* ── POST hook ── */
+        if (post) {
+            _postHook(
+                msg.sig,
+                poolId,
+                msg.sender,
+                -int256(amount0),
+                -int256(amount1),
+                -int256(liquidity),
+                "",
+                hook
+            );
+        }
+
         emit Burn(poolId, msg.sender, amount0, amount1, to);
     }
 
@@ -478,60 +671,219 @@ contract ZAMM is ZERC6909 {
 
     event URI(string uri, uint256 indexed coinId);
 
-    function make(address maker, uint256 supply, string calldata uri)
+    uint256 coins;
+
+    function coin(address creator, uint256 supply, string calldata uri)
         public
         returns (uint256 coinId)
     {
-        coinId =
-            uint256(keccak256(abi.encodePacked(this.make.selector, msg.sender, block.timestamp)));
-        _initMint(maker, coinId, supply);
-        emit URI(uri, coinId);
+        unchecked {
+            coinId = ++coins;
+            _initMint(creator, coinId, supply);
+            emit URI(uri, coinId);
+        }
     }
 
-    function makeLiquid(
-        address maker,
-        address liqTo,
-        uint256 mkrAmt,
-        uint256 liqAmt,
-        uint256 swapFee,
-        string calldata uri
-    ) public payable returns (uint256 coinId, uint256 poolId, uint256 liquidity) {
-        require(swapFee <= MAX_FEE, InvalidSwapFee());
-        require(liqAmt <= type(uint256).max - mkrAmt, Overflow());
+    // ** TIMELOCK
 
-        coinId = uint256(
-            keccak256(abi.encodePacked(this.makeLiquid.selector, msg.sender, block.timestamp))
+    event Lock(address indexed sender, address indexed to, bytes32 indexed lockHash);
+
+    mapping(bytes32 lockHash => uint256 unlockTime) public lockups;
+
+    error Pending();
+
+    function lockup(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
+        public
+        payable
+        lock
+        returns (bytes32 lockHash)
+    {
+        require(unlockTime > block.timestamp, Expired());
+        require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
+        if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
+
+        lockHash = keccak256(abi.encode(token, to, id, amount, unlockTime));
+        require(lockups[lockHash] == 0, Pending());
+
+        lockups[lockHash] = unlockTime;
+
+        emit Lock(msg.sender, to, lockHash);
+    }
+
+    function unlock(address token, address to, uint256 id, uint256 amount, uint256 unlockTime)
+        public
+        lock
+    {
+        bytes32 lockHash = keccak256(abi.encode(token, to, id, amount, unlockTime));
+
+        require(lockups[lockHash] != 0, Unauthorized());
+        require(block.timestamp >= unlockTime, Pending());
+
+        delete lockups[lockHash];
+
+        _safeTransfer(token, to, id, amount);
+    }
+
+    // ** ORDERBOOK
+
+    event Make(address indexed maker, bytes32 indexed orderHash);
+    event Fill(address indexed taker, bytes32 indexed orderHash);
+    event Cancel(address indexed maker, bytes32 indexed orderHash);
+
+    mapping(bytes32 orderHash => Order) public orders;
+
+    error BadSize();
+
+    struct Order {
+        bool partialFill;
+        uint56 deadline;
+        uint96 inDone; // maker leg already delivered (tokenIn)
+        uint96 outDone; // taker payment already paid (tokenOut)
+    }
+
+    /*════════════════ maker: create order ════════════════*/
+    function makeOrder(
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn, // maker sells
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut, // desired asset
+        uint56 deadline,
+        bool partialFill
+    ) public payable lock returns (bytes32 orderHash) {
+        require(deadline > block.timestamp, Expired());
+        // escrow ETH only if the sell-asset is ETH
+        require(msg.value == (tokenIn == address(0) ? amtIn : 0), InvalidMsgVal());
+
+        orderHash = keccak256(
+            abi.encode(
+                msg.sender, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill
+            )
         );
-        if (mkrAmt != 0) _initMint(maker, coinId, mkrAmt);
-        emit URI(uri, coinId);
+        require(orders[orderHash].deadline == 0, Pending());
 
-        assembly ("memory-safe") {
-            let m := mload(0x40)
-            mstore(m, 0)
-            mstore(add(m, 0x20), coinId)
-            mstore(add(m, 0x40), 0)
-            mstore(add(m, 0x60), address())
-            mstore(add(m, 0x80), swapFee)
-            poolId := keccak256(m, 0xa0)
+        orders[orderHash] = Order(partialFill, deadline, 0, 0);
+
+        emit Make(msg.sender, orderHash);
+    }
+
+    /*════════════ taker: fill order ══════════════════════*/
+    function fillOrder(
+        address maker,
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn, // full maker leg
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut, // full taker payment
+        uint56 deadline,
+        bool partialFill,
+        uint96 fillPart // 0 = “take remainder” (only for partial fills)
+    ) public payable lock {
+        if (tokenOut != address(0)) require(msg.value == 0, InvalidMsgVal());
+
+        // ensure non-partial callers only use fillPart==0 or fillPart==amtOut
+        if (!partialFill) {
+            require(fillPart == 0 || fillPart == amtOut, BadSize());
         }
 
-        Pool storage pool = pools[poolId];
+        bytes32 orderHash = keccak256(
+            abi.encode(maker, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill)
+        );
 
-        bool feeOn;
-        assembly ("memory-safe") {
-            feeOn := iszero(iszero(sload(0x20)))
+        Order storage order = orders[orderHash];
+        require(order.deadline != 0, Unauthorized());
+        require(block.timestamp <= order.deadline, Expired());
+
+        uint96 oldIn = order.inDone;
+        uint96 oldOut = order.outDone;
+
+        // compute how much to fill this call
+        uint96 sliceOut = partialFill ? (fillPart == 0 ? amtOut - oldOut : fillPart) : amtOut;
+        require(sliceOut != 0 && oldOut + sliceOut <= amtOut, Overflow());
+
+        uint96 sliceIn = partialFill
+            ? (fillPart == 0 ? amtIn - oldIn : uint96(mulDiv(amtIn, sliceOut, amtOut)))
+            : amtIn;
+        require(sliceIn != 0, BadSize());
+
+        uint96 newOutDone = oldOut + sliceOut;
+        uint96 newInDone = oldIn + sliceIn;
+
+        orders[orderHash] = Order({
+            partialFill: order.partialFill,
+            deadline: order.deadline,
+            inDone: newInDone,
+            outDone: newOutDone
+        });
+
+        _payOut(tokenOut, idOut, sliceOut, maker);
+        _payIn(tokenIn, idIn, sliceIn, maker);
+
+        if (newOutDone == amtOut) delete orders[orderHash];
+
+        emit Fill(msg.sender, orderHash);
+    }
+
+    /*════════════ maker: cancel order ════════════════════*/
+    function cancelOrder(
+        address tokenIn,
+        uint256 idIn,
+        uint96 amtIn,
+        address tokenOut,
+        uint256 idOut,
+        uint96 amtOut,
+        uint56 deadline,
+        bool partialFill
+    ) public lock {
+        bytes32 orderHash = keccak256(
+            abi.encode(
+                msg.sender, tokenIn, idIn, amtIn, tokenOut, idOut, amtOut, deadline, partialFill
+            )
+        );
+
+        Order memory order = orders[orderHash];
+        require(order.deadline != 0, Unauthorized());
+
+        delete orders[orderHash];
+
+        if (partialFill) amtIn -= order.inDone; // account for unspent ETH escrow
+        if (tokenIn == address(0)) if (amtIn != 0) safeTransferETH(msg.sender, amtIn);
+
+        emit Cancel(msg.sender, orderHash);
+    }
+
+    /*──────── internal transfer helpers ────────*/
+    function _payOut(address token, uint256 id, uint96 amt, address to) internal {
+        if (_useTransientBalance(token, id, amt)) {
+            require(msg.value == 0, InvalidMsgVal());
+            return;
         }
-
-        liquidity = sqrt(msg.value * liqAmt) - MINIMUM_LIQUIDITY;
-        require(liquidity != 0, InsufficientLiquidityMinted());
-        _initMint(liqTo, poolId, liquidity);
-        unchecked {
-            pool.supply = liquidity + MINIMUM_LIQUIDITY;
+        if (token == address(this)) {
+            _burn(msg.sender, id, amt);
+            _mint(to, id, amt);
+        } else if (token == address(0)) {
+            require(msg.value == amt, InvalidMsgVal());
+            safeTransferETH(to, amt);
+        } else if (id == 0) {
+            safeTransferFrom(token, msg.sender, to, amt);
+        } else {
+            ZERC6909(token).transferFrom(msg.sender, to, id, amt);
         }
+    }
 
-        _update(pool, poolId, msg.value, liqAmt, 0, 0);
-        if (feeOn) pool.kLast = msg.value * liqAmt;
-        emit Mint(poolId, msg.sender, msg.value, liqAmt);
+    function _payIn(address token, uint256 id, uint96 amt, address from) internal {
+        if (token == address(this)) {
+            _burn(from, id, amt);
+            _mint(msg.sender, id, amt);
+        } else if (token == address(0)) {
+            safeTransferETH(msg.sender, amt);
+        } else if (id == 0) {
+            safeTransferFrom(token, from, msg.sender, amt);
+        } else {
+            ZERC6909(token).transferFrom(from, msg.sender, id, amt);
+        }
     }
 
     // ** TRANSIENT
@@ -550,7 +902,7 @@ contract ZAMM is ZERC6909 {
 
     function deposit(address token, uint256 id, uint256 amount) public payable {
         require(msg.value == (token == address(0) ? amount : 0), InvalidMsgVal());
-        if (token != address(0)) _safeTransferFrom(token, id, amount);
+        if (token != address(0)) _safeTransferFrom(token, msg.sender, address(this), id, amount);
         assembly ("memory-safe") {
             let m := mload(0x40)
             mstore(0x00, caller())
@@ -622,7 +974,7 @@ contract ZAMM is ZERC6909 {
         }
     }
 
-    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256 amountOut)
@@ -633,7 +985,7 @@ contract ZAMM is ZERC6909 {
         return numerator / denominator;
     }
 
-    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint96 swapFee)
+    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut, uint256 swapFee)
         internal
         pure
         returns (uint256 amountIn)
@@ -666,48 +1018,6 @@ contract ZAMM is ZERC6909 {
             sstore(0x00, feeToSetter)
         }
     }
-
-    // ** BATCH
-    function multicall(bytes[] calldata data) public returns (bytes[] memory results) {
-        results = new bytes[](data.length);
-        for (uint256 i; i != data.length; ++i) {
-            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
-            if (!success) {
-                assembly ("memory-safe") {
-                    revert(add(result, 0x20), mload(result))
-                }
-            }
-            results[i] = result;
-        }
-    }
-
-    // ** COMPRESS
-    // Solady (https://github.com/Vectorized/solady/blob/main/src/utils/LibZip)
-    fallback() external payable {
-        assembly ("memory-safe") {
-            if iszero(calldatasize()) { return(calldatasize(), calldatasize()) }
-            let o := 0
-            let f := not(3)
-            for { let i := 0 } lt(i, calldatasize()) {} {
-                let c := byte(0, xor(add(i, f), calldataload(i)))
-                i := add(i, 1)
-                if iszero(c) {
-                    let d := byte(0, xor(add(i, f), calldataload(i)))
-                    i := add(i, 1)
-                    mstore(o, not(0))
-                    if iszero(gt(d, 0x7f)) { calldatacopy(o, calldatasize(), add(d, 1)) }
-                    o := add(o, add(and(d, 0x7f), 1))
-                    continue
-                }
-                mstore8(o, c)
-                o := add(o, 1)
-            }
-            let success := delegatecall(gas(), address(), 0x00, o, codesize(), 0x00)
-            returndatacopy(0x00, 0x00, returndatasize())
-            if iszero(success) { revert(0x00, returndatasize()) }
-            return(0x00, returndatasize())
-        }
-    }
 }
 
 // minimal ZAMM call interface
@@ -717,6 +1027,23 @@ interface IZAMMCallee {
         address sender,
         uint256 amount0,
         uint256 amount1,
+        bytes calldata data
+    ) external;
+}
+
+// minimal ZAMM hook interface
+interface IZAMMHook {
+    function beforeAction(bytes4 sig, uint256 poolId, address sender, bytes calldata data)
+        external
+        returns (uint256 feeBps);
+
+    function afterAction(
+        bytes4 sig,
+        uint256 poolId,
+        address sender,
+        int256 d0,
+        int256 d1,
+        int256 dLiq,
         bytes calldata data
     ) external;
 }

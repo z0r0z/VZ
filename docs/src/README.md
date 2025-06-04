@@ -1,32 +1,12 @@
 # ZAMM
 
-Contemporary Passive Liquidity AMM Singleton. By [z0r0z](https://x.com/z0r0zzz).
+A Minimal Multitoken AMM. By [z0r0z](https://x.com/z0r0zzz).
 
-Deployed efficiently to every chain at [`0x00000000000008882D72EfA6cCE4B6a40b24C860`](https://contractscan.xyz/contract/0x00000000000008882D72EfA6cCE4B6a40b24C860).
+Deployed to [0x000000000000040470635EB91b7CE4D132D616eD](https://contractscan.xyz/contract/0x000000000000040470635EB91b7CE4D132D616eD).
 
-Changes are meant to cause little disruption to the familiar and battle-tested [Uniswap V2 core](https://github.com/Uniswap/v2-core). While also introducing efficiency and optimized patterns the public has otherwise made through opinionated forks. ZAMM should consolidate, reform and optimize these variations as much as possible to represent a simple and useable singleton.
+This deployment includes an embedded orderbook and timelock extension.
 
-Changes include the following:
-
-✵ ETH pool support (`address(0)`)
-
-✵ Built-in router logic (easy pz)
-
-✵ ERC6909 mulitoken swap support
-
-✵ Native tokenization methods
-
-✵ Flash accounting for gas
-
-✵ Custom fee tiers (up to 100%)
-
-✵ Adapted Syntax (e.g. safemath)
-
-✵ Latest Solidity Compiler (0.8.29)
-
-✵ *Solady* most of the things *etc.*
-
-Note: The biggest design difference is that the ZAMM singleton expects a `pull` pattern of `transferFrom` rather than direct transfers. The `deposit()` function should be called by external routers or locally via `multicall()`. Convenience functions are also provided such as `addLiquidity`, `removeLiquidity`, `swapExactIn` and `swapExactOut` to replicate the classic V2 router dev experience. Enjoy!
+Docs: [docs.zamm.eth.limo](https://docs.zamm.eth.limo/)
 
 ## Getting Started
 
@@ -40,4 +20,4 @@ Build the foundry project with `forge build`. Run tests with `forge test`. Measu
 
 ## License
 
-See [LICENSE](./LICENSE) for more details.
+MIT. See [LICENSE](./LICENSE) for more details.
