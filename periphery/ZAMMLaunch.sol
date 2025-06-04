@@ -133,6 +133,7 @@ contract ZAMMLaunch {
     error Finalized();
     error InvalidMsgVal();
 
+    /// @notice Purchase coins from selected tranche. Finalizes pool liquidity if last fill.
     function buy(uint256 coinId, uint256 trancheIdx) public payable returns (uint128 coinsOut) {
         _lock(); // transient guard
         Sale storage S = sales[coinId];
