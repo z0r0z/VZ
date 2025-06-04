@@ -135,7 +135,11 @@ contract ZAMMLaunch {
 
     /// @notice Purchase coins from selected tranche. Finalizes pool liquidity if last fill.
     function buy(uint256 coinId, uint256 trancheIdx) public payable returns (uint128 coinsOut) {
-        _lock(); // transient guard
+        // set transient guard
+        assembly ("memory-safe") {
+            tstore(0x00, address())
+        }
+
         Sale storage S = sales[coinId];
         require(S.creator != address(0), Finalized());
         require(trancheIdx < S.trancheCoins.length, BadIndex());
@@ -155,6 +159,11 @@ contract ZAMMLaunch {
             true,
             uint96(msg.value)
         );
+
+        // clear transient guard
+        assembly ("memory-safe") {
+            tstore(0x00, 0)
+        }
 
         unchecked {
             coinsOut = uint128(coinsIn * msg.value / ethOut);
@@ -196,14 +205,13 @@ contract ZAMMLaunch {
             )
         );
 
-        (,,, uint96 outDone) = Z.orders(orderHash);
-        if (ethTotal > outDone) weiRemaining = ethTotal - outDone;
-    }
-
-    /// @dev Only launchpad can fill orders.
-    function _lock() internal {
-        assembly ("memory-safe") {
-            tstore(0x00, address())
+        // If the order has been deleted (deadline==0), treat as fully sold.
+        (, uint56 deadline, , uint96 outDone) = Z.orders(orderHash);
+        if (deadline == 0) {
+            return 0;
+        }
+        if (ethTotal > outDone) {
+            weiRemaining = ethTotal - outDone;
         }
     }
 
@@ -211,7 +219,7 @@ contract ZAMMLaunch {
 
     receive() external payable {
         require(msg.sender == address(Z), Unauthorized());
-        assembly ("memory-safe") {
+        assembly ("memory-safe") { // check transient guard
             if iszero(tload(0x00)) { revert(codesize(), 0x00) }
         }
     }
