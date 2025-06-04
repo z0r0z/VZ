@@ -8,7 +8,7 @@ import {ZAMMLaunch} from "../periphery/ZAMMLaunch.sol";
 contract ZAMMLaunchpadTest is Test {
     /* ── deployed artefacts ── */
     ZAMM constant zamm = ZAMM(payable(0x000000000000040470635EB91b7CE4D132D616eD));
-    ZAMMLaunch pad;
+    ZAMMLaunch constant pad = ZAMMLaunch(payable(0x0000000000bb8883CBEd6D69cDbE1013613c7CdA));
 
     /* scratch arrays reused every test */
     uint96[] coins;
@@ -21,7 +21,6 @@ contract ZAMMLaunchpadTest is Test {
     /* ------------------------------------------------ */
     function setUp() public {
         vm.createSelectFork(vm.rpcUrl("main"));
-        pad = new ZAMMLaunch();
 
         vm.deal(creator, 100 ether);
         vm.deal(buyer1, 100 ether);

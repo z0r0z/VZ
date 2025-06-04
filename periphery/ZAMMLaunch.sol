@@ -206,7 +206,7 @@ contract ZAMMLaunch {
         );
 
         // If the order has been deleted (deadline==0), treat as sold
-        (, uint56 deadline, , uint96 outDone) = Z.orders(orderHash);
+        (, uint56 deadline,, uint96 outDone) = Z.orders(orderHash);
         if (deadline == 0) {
             return 0;
         }
@@ -219,7 +219,8 @@ contract ZAMMLaunch {
 
     receive() external payable {
         require(msg.sender == address(Z), Unauthorized());
-        assembly ("memory-safe") { // check transient guard
+        assembly ("memory-safe") {
+            // check transient guard
             if iszero(tload(0x00)) { revert(codesize(), 0x00) }
         }
     }
