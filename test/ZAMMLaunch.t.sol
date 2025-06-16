@@ -26,6 +26,14 @@ contract ZAMMLaunchpadTest is Test {
         vm.deal(creator, 100 ether);
         vm.deal(buyer1, 100 ether);
         vm.deal(buyer2, 100 ether);
+
+        coins.push(600);
+        coins.push(400);
+        coins.push(200);
+
+        prices.push(600);
+        prices.push(400);
+        prices.push(200);
     }
 
     /* helpers ------------------------------------------------------------ */
@@ -47,6 +55,12 @@ contract ZAMMLaunchpadTest is Test {
         } else if (y != 0) {
             z = 1;
         }
+    }
+
+    // GAS ESTIMATION
+
+    function testThreeTrancheSaleGasCost() public {
+        pad.launch(0, 0, "uri", coins, prices);
     }
 
     /* 1 ───────────────────────────────────────────────────────────────── */

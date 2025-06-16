@@ -1,5 +1,5 @@
 # encode
-[Git Source](https://github.com/zammdefi/ZAMM/blob/fa189555585feef833515e20b93171c09b0534a0/src/utils/Math.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/481ee36d21c44278ddb95f69fd35779cb4598874/src/utils/Math.sol)
 
 *Encode a uint112 as a UQ112x112.*
 
