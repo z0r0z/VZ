@@ -28,6 +28,24 @@ contract ZAMMLaunch {
     event Buy(address indexed buyer, uint256 indexed coinId, uint256 ethIn, uint128 coinsOut);
     event Finalize(uint256 indexed coinId, uint256 ethLp, uint256 coinLp, uint256 lpMinted);
 
+    /* ───────── guard ───────── */
+    // Solady (https://github.com/Vectorized/soledge/blob/main/src/utils/ReentrancyGuard.sol)
+    error Reentrancy();
+
+    modifier lock() {
+        assembly ("memory-safe") {
+            if tload(0x929eee149b4bd21268) {
+                mstore(0x00, 0xab143c06) // `Reentrancy()`
+                revert(0x1c, 0x04)
+            }
+            tstore(0x929eee149b4bd21268, address())
+        }
+        _;
+        assembly ("memory-safe") {
+            tstore(0x929eee149b4bd21268, 0)
+        }
+    }
+
     /* ───────── constructor ───────── */
     constructor() payable {}
 
@@ -176,7 +194,7 @@ contract ZAMMLaunch {
     error InvalidMsgVal();
 
     /// @notice Purchase coins from selected tranche. Finalizes pool liquidity if last fill.
-    function buy(uint256 coinId, uint256 trancheIdx) public payable returns (uint128 coinsOut) {
+    function buy(uint256 coinId, uint256 trancheIdx) public payable lock returns (uint128 coinsOut) {
         Sale storage S = sales[coinId];
         require(S.creator != address(0), Finalized());
         require(trancheIdx < S.trancheCoins.length, BadIndex());
@@ -262,6 +280,105 @@ contract ZAMMLaunch {
         }
     }
 
+    /* ---------------- share helpers ---------------- */
+
+    /// ------------------------------------------------------------------
+    /// buyExactCoins  –  share-driven purchase with automatic refund
+    /// ------------------------------------------------------------------
+    
+    error ZeroShares();
+
+    function buyExactCoins(
+        uint256 coinId,
+        uint256 trancheIdx,
+        uint96 shares // exact number of coins desired
+    ) public lock payable returns (uint128 coinsOut) {
+        if (shares == 0) revert ZeroShares();
+
+        Sale storage S = sales[coinId];
+        require(S.creator != address(0), Finalized());
+        require(trancheIdx < S.trancheCoins.length, BadIndex());
+
+        uint96 coinsIn = S.trancheCoins[trancheIdx]; 
+        uint96 ethOut  = S.tranchePrice[trancheIdx]; 
+
+        // -------- price calculation ------------------------------------
+        uint256 numerator = uint256(shares) * ethOut;
+        require(numerator % coinsIn == 0, InvalidMsgVal());
+        uint256 costWei   = numerator / coinsIn;
+        require(msg.value >= costWei, InvalidMsgVal());
+
+        // -------- call into ZAMM fillOrder directly --------------------
+        Z.fillOrder(
+            address(this),
+            address(Z),
+            coinId,
+            coinsIn,
+            address(this),
+            0,
+            ethOut,
+            S.deadlines[trancheIdx],
+            true,
+            uint96(costWei) // we pay only the exact cost                        
+        );
+
+        // -------- update accounting ------------------------------------
+        unchecked {
+            coinsOut = shares; // by construction                  
+            S.ethRaised += uint128(costWei);
+            S.coinsSold += coinsOut;
+            balances[coinId][msg.sender] += coinsOut;
+        }
+
+        emit Buy(msg.sender, coinId, costWei, coinsOut);
+
+        // auto-finalise when fully sold
+        if (S.coinsSold == _saleSupply(S)) _finalize(S, coinId);
+
+        // -------- refund surplus (if any) ------------------------------
+        if (msg.value > costWei) {
+            unchecked {
+                payable(msg.sender).transfer(msg.value - costWei);
+            }
+        }
+    }
+
+    /// @notice Remaining coins to fill a given tranche order (0 if sold-out or finalized).
+    function trancheRemainingCoins(uint256 coinId, uint256 trancheIdx)
+        public
+        view
+        returns (uint96 coinsRemaining)
+    {
+        Sale storage S = sales[coinId];
+        if (S.creator == address(0) || trancheIdx >= S.trancheCoins.length) return 0;
+
+        uint96 coinsTotal = S.trancheCoins[trancheIdx];
+        uint96 ethTotal   = S.tranchePrice[trancheIdx];
+
+        bytes32 orderHash = keccak256(
+            abi.encode(
+                address(this),
+                address(Z),
+                coinId,
+                coinsTotal, 
+                address(this),
+                0,
+                ethTotal,            
+                S.deadlines[trancheIdx],
+                true                 
+            )
+        );
+
+        /* if order has been deleted (deadline == 0) treat as sold-out */
+        (, uint56 deadline, uint96 inDone,) = Z.orders(orderHash);
+        if (deadline == 0) return 0;
+
+        if (coinsTotal > inDone) {
+            coinsRemaining = coinsTotal - inDone;
+        }
+    }
+
+
     /* ===================================================================== //
                                F I N A L I Z E
     // =====================================================================*/
@@ -269,7 +386,7 @@ contract ZAMMLaunch {
     error Pending();
 
     /// @notice Anyone may finalize after window.
-    function finalize(uint256 coinId) public {
+    function finalize(uint256 coinId) public lock {
         Sale storage S = sales[coinId];
         require(S.creator != address(0), Finalized());
         require(block.timestamp >= S.deadlineLast, Pending());
@@ -277,7 +394,7 @@ contract ZAMMLaunch {
     }
 
     /// @notice Anyone may claim after finalized.
-    function claim(uint256 coinId, uint256 amount) public {
+    function claim(uint256 coinId, uint256 amount) public lock {
         Sale storage S = sales[coinId];
         require(S.creator == address(0), Pending());
         balances[coinId][msg.sender] -= amount;

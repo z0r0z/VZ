@@ -63,7 +63,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    1.  Manual finalise after partial sale ─────────────────────────── */
+    1.  Manual finalize after partial sale ─────────────────────────── */
     function testTwoTrancheManualFinalize() public {
         delete coins;
         delete prices;
@@ -122,7 +122,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    3.  Early-finalise guard works ─────────────────────────────────── */
+    3.  Early-finalize guard works ─────────────────────────────────── */
     function testEarlyFinalizeReverts() public {
         delete coins;
         delete prices;
@@ -136,7 +136,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    4.  Idempotent finalise ────────────────────────────────────────── */
+    4.  Idempotent finalize ────────────────────────────────────────── */
     function testFinalizeTwiceNoOp() public {
         delete coins;
         delete prices;
@@ -292,7 +292,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    13. Multi-tranche partial & auto-finalise ──────────────────────── */
+    13. Multi-tranche partial & auto-finalize ──────────────────────── */
     function testMultiTranchePartialAndFinalize() public {
         delete coins;
         delete prices;
@@ -345,7 +345,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    15. Finalize before deadline / after auto-finalise ─────────────── */
+    15. Finalize before deadline / after auto-finalize ─────────────── */
     function testFinalizeBeforeDeadlineReverts() public {
         delete coins;
         delete prices;
@@ -378,7 +378,7 @@ contract ZAMMLaunchpadTest is Test {
         /* creator balance is still zero (tokens held in pad) */
         assertEq(zamm.balanceOf(address(this), coinId), 0);
 
-        /* buyer1 buys entire tranche → triggers auto-finalise */
+        /* buyer1 buys entire tranche → triggers auto-finalize */
         vm.prank(buyer1);
         pad.buy{value: 1 ether}(coinId, 0);
 
@@ -448,7 +448,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    20. Finalise after partial sale leaves extra duplicates ────────── */
+    20. finalize after partial sale leaves extra duplicates ────────── */
     function testPartialSaleFinalizeLeavesLockedTokens() public {
         delete coins;
         delete prices;
@@ -515,7 +515,7 @@ contract ZAMMLaunchpadTest is Test {
     }
 
     /* ==================================================================
-    24. Auto-finalise then further buy() must revert Finalized() ───── */
+    24. Auto-finalize then further buy() must revert Finalized() ───── */
     function testBuyAfterImmediateSelloutButBeforeDeadlineReverts() public {
         delete coins;
         delete prices;
@@ -609,6 +609,316 @@ contract ZAMMLaunchpadTest is Test {
         pad.coinWithPoolCustom{value: 1 ether}(true, swapFee, 100, 0, pastTime, "uri");
     }
 
+    /* ==================================================================
+    29.  claim() before finalization must revert Pending() ─────────── */
+    function testClaimBeforeFinalizeReverts() public {
+        /* set up 100-coin tranche @ 1 ETH */
+        delete coins;
+        delete prices;
+        coins.push(100);
+        prices.push(uint96(1 ether));
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* buyer purchases half; sale NOT yet finalized */
+        vm.prank(buyer1);
+        pad.buy{value: 0.5 ether}(coinId, 0);
+
+        /* premature claim should fail */
+        vm.prank(buyer1);
+        vm.expectRevert(ZAMMLaunch.Pending.selector);
+        pad.claim(coinId, 50);
+
+        /* warp beyond sale window & finalize */
+        vm.warp(block.timestamp + 8 days);
+        pad.finalize(coinId);
+
+        /* now claim succeeds */
+        vm.prank(buyer1);
+        pad.claim(coinId, 50);
+        assertEq(zamm.balanceOf(buyer1, coinId), 50);
+    }
+
+    /* ==================================================================
+    30.  claim() over-balance reverts via checked-arithmetic underflow */
+    function testClaimOverBalanceReverts() public {
+        delete coins;
+        delete prices;
+        coins.push(100);
+        prices.push(uint96(1 ether));
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* sell out → auto-finalize */
+        vm.prank(buyer1);
+        pad.buy{value: 1 ether}(coinId, 0);
+
+        /* first claim OK */
+        vm.prank(buyer1);
+        pad.claim(coinId, 100);
+
+        /* second claim (over-balance) must revert with ArithmeticError */
+        vm.prank(buyer1);
+        vm.expectRevert(stdError.arithmeticError);
+        pad.claim(coinId, 1);
+    }
+
+    /* ==================================================================
+    31.  Attacker tries Z.swapExactIn(launchCoin→ETH) pre-finalize ──── */
+    function testSwapExactInLaunchCoinFails() public {
+        delete coins;
+        delete prices;
+        coins.push(100);
+        prices.push(uint96(1 ether));
+        uint256 coinId = pad.launch(0, 0, "u", coins, prices);
+
+        /* attacker fakes a poolKey (will fail because pool not created) */
+        ZAMM.PoolKey memory key = ZAMM.PoolKey({
+            id0: 0,
+            id1: coinId,
+            token0: address(0),
+            token1: address(zamm),
+            feeOrHook: 100
+        });
+
+        vm.prank(buyer1);
+        vm.expectRevert(); // no pool / invalid transferFrom
+        zamm.swapExactIn(key, 1, 0, false, buyer1, block.timestamp);
+    }
+
+    /* ==================================================================
+    32.  Bogus maker order can be created but cannot be filled ───────── */
+    function testBogusMakerOrderCannotFill() public {
+        /* set up a sale so we have a valid coinId                        */
+        delete coins;
+        delete prices;
+        coins.push(100);
+        prices.push(uint96(1 ether));
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* ── attacker (buyer1) posts an order “selling” 10 pad-coins ─── */
+        vm.prank(buyer1);
+        bytes32 bogusHash = zamm.makeOrder(
+            address(zamm), // tokenIn  = pad-coin contract
+            coinId, // idIn     = coinId
+            10, // amtIn    = 10 coins (maker leg)
+            address(0),
+            0, // want ETH
+            uint96(0.1 ether), // amtOut   = 0.1 ETH
+            uint56(block.timestamp + 1 days),
+            false
+        );
+
+        /* order exists ⇒ deadline non-zero                                */
+        (, uint56 deadline,,) = zamm.orders(bogusHash);
+        assertGt(deadline, 0);
+
+        /* ── honest taker (buyer2) tries to fill; must revert ─────────── */
+        vm.prank(buyer2);
+        vm.expectRevert(); // _burn underflow inside _payIn
+        zamm.fillOrder{value: 0.1 ether}(
+            buyer1, // maker
+            address(zamm),
+            coinId,
+            10,
+            address(0),
+            0,
+            uint96(0.1 ether),
+            uint56(block.timestamp + 1 days),
+            false,
+            0
+        );
+    }
+
+    /* ==================================================================
+    33. buyExactCoins flow: refund, locked balance, finalise, claim ─── */
+    function testBuyExactCoinsFlow() public {
+        /* ── Sale setup: 4 coins total @ 1 ETH (0.25 ea) ─────────────── */
+        delete coins;
+        delete prices;
+        coins.push(4);
+        prices.push(uint96(1 ether));
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* ── Buyer-1 purchases 3 coins, sends 1 ETH (0.25 surplus) ───── */
+        vm.deal(buyer1, 1 ether);
+        uint256 balBefore = buyer1.balance;
+
+        vm.prank(buyer1);
+        pad.buyExactCoins{value: 1 ether}(coinId, 0, 3);
+
+        /* refund check: balance decreased by exactly 0.75 ETH */
+        assertApproxEqAbs(buyer1.balance, balBefore - 0.75 ether, 1);
+
+        /* locked balance recorded inside launchpad */
+        assertEq(pad.balances(coinId, buyer1), 3);
+
+        /* ── Buyer-2 buys last coin, triggers auto-finalise ──────────────── */
+        vm.deal(buyer2, 0.25 ether);
+        vm.prank(buyer2);
+        pad.buyExactCoins{value: 0.25 ether}(coinId, 0, 1);
+
+        /* launchpad’s Sale struct is now cleared (creator == 0) */
+        (address saleCreator,,,,) = pad.sales(coinId);
+        assertEq(saleCreator, address(0)); // sale finalised
+
+        /* ── Buyer-1 claims their 3 coins, balance unlocks ───────────── */
+        vm.prank(buyer1);
+        pad.claim(coinId, 3);
+
+        assertEq(zamm.balanceOf(buyer1, coinId), 3); // ERC-6909 balance
+        assertEq(pad.balances(coinId, buyer1), 0); // launchpad slot cleared
+
+        /* Buyer-2 can also claim */
+        vm.prank(buyer2);
+        pad.claim(coinId, 1);
+        assertEq(zamm.balanceOf(buyer2, coinId), 1);
+    }
+
+    /* ==================================================================
+    34. buyExactCoins – insufficient ETH supplied reverts ───────────── */
+    function testBuyExactCoinsInsufficientEthReverts() public {
+        delete coins;
+        delete prices;
+        coins.push(4); // 0.25 ETH / coin
+        prices.push(uint96(1 ether));
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        vm.deal(buyer1, 0.5 ether); // cost will be 0.75 ETH
+        vm.prank(buyer1);
+        vm.expectRevert(ZAMMLaunch.InvalidMsgVal.selector);
+        pad.buyExactCoins{value: 0.5 ether}(coinId, 0, 3);
+    }
+
+    /* ==================================================================
+    35. buyExactCoins – non-integral price reverts ──────────────────── */
+    function testBuyExactCoinsNonIntegralReverts() public {
+        delete coins;
+        delete prices;
+        coins.push(3); // 3 coins
+        prices.push(uint96(2 ether)); // price per coin = 0.666… ETH
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        vm.deal(buyer1, 1 ether);
+        vm.prank(buyer1);
+        // 2 coins would cost 1.333… ETH (non-integral) → revert
+        vm.expectRevert(ZAMMLaunch.InvalidMsgVal.selector);
+        pad.buyExactCoins{value: 1 ether}(coinId, 0, 2);
+    }
+
+    /* ==================================================================
+    36. buyExactCoins – request more shares than tranche reverts ─────── */
+    function testBuyExactCoinsOverSubscriptionReverts() public {
+        delete coins;
+        delete prices;
+        coins.push(4); // tranche size = 4
+        prices.push(uint96(1 ether));
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        // 5 coins would exceed tranche; cost = 1.25 ETH
+        vm.deal(buyer1, 2 ether);
+        vm.prank(buyer1);
+        vm.expectRevert(); // generic revert (ZAMM overflow)
+        pad.buyExactCoins{value: 1.25 ether}(coinId, 0, 5);
+    }
+
+    /* ==================================================================
+    37. buyExactCoins + legacy buy() inter-operability (Exact→Wei)────── */
+    function testBuyExactThenWei() public {
+        delete coins;
+        delete prices;
+        coins.push(4);
+        prices.push(uint96(1 ether)); // 0.25 per coin
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* Buyer-1 gets 3 coins via buyExactCoins (0.75 ETH) */
+        vm.deal(buyer1, 1 ether);
+        vm.prank(buyer1);
+        pad.buyExactCoins{value: 0.75 ether}(coinId, 0, 3);
+
+        /* Buyer-2 gets last coin via classic buy() (0.25 ETH) */
+        vm.deal(buyer2, 0.25 ether);
+        vm.prank(buyer2);
+        pad.buy{value: 0.25 ether}(coinId, 0);
+
+        /* Sale auto-finalised; both can claim */
+        vm.prank(buyer1);
+        pad.claim(coinId, 3);
+        vm.prank(buyer2);
+        pad.claim(coinId, 1);
+
+        assertEq(zamm.balanceOf(buyer1, coinId), 3);
+        assertEq(zamm.balanceOf(buyer2, coinId), 1);
+    }
+
+    /* ==================================================================
+    38. buy() first, then buyExactCoins (Wei→Exact) inter-op test ───── */
+    function testWeiThenBuyExactCoins() public {
+        delete coins;
+        delete prices;
+        coins.push(4);
+        prices.push(uint96(1 ether)); // 0.25 per coin
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* Buyer-1 buys 1 coin via legacy buy() */
+        vm.deal(buyer1, 0.25 ether);
+        vm.prank(buyer1);
+        pad.buy{value: 0.25 ether}(coinId, 0);
+
+        /* Buyer-2 buys remaining 3 via buyExactCoins */
+        vm.deal(buyer2, 1 ether);
+        vm.prank(buyer2);
+        pad.buyExactCoins{value: 0.9 ether}(coinId, 0, 3); // sends 0.9 (≥0.75) and gets refund
+
+        /* Auto-finalised, claim balances */
+        vm.prank(buyer1);
+        pad.claim(coinId, 1);
+        vm.prank(buyer2);
+        pad.claim(coinId, 3);
+
+        assertEq(zamm.balanceOf(buyer1, coinId), 1);
+        assertEq(zamm.balanceOf(buyer2, coinId), 3);
+    }
+
+    /* ==================================================================
+    39. trancheRemainingCoins mirrors remaining-wei logic ───────────── */
+    function testTrancheRemainingCoins() public {
+        /* tranche: 1 000 coins ↔ 2 ETH  →  price 0.002 ETH per coin     */
+        delete coins;
+        delete prices;
+        coins.push(1_000);
+        prices.push(uint96(2 ether));
+
+        uint256 coinId = pad.launch(0, 0, "uri", coins, prices);
+
+        /* initially: all 1 000 coins remain */
+        assertEq(uint256(pad.trancheRemainingCoins(coinId, 0)), 1_000);
+
+        /* Buyer-1 sends 1 ETH → receives 500 coins */
+        vm.deal(buyer1, 1 ether);
+        vm.prank(buyer1);
+        pad.buy{value: 1 ether}(coinId, 0);
+
+        /* 500 coins should remain */
+        assertEq(uint256(pad.trancheRemainingCoins(coinId, 0)), 500);
+
+        /* Buyer-2 sends the final 1 ETH → tranche filled, auto-finalise */
+        vm.deal(buyer2, 1 ether);
+        vm.prank(buyer2);
+        pad.buy{value: 1 ether}(coinId, 0);
+
+        /* after fill / finalise the helper returns 0 */
+        assertEq(uint256(pad.trancheRemainingCoins(coinId, 0)), 0);
+
+        /* invalid tranche index also returns 0 */
+        assertEq(uint256(pad.trancheRemainingCoins(coinId, 1)), 0);
+    }
+
+    /* ==================================================================
     /* allow contracts in tests to receive ETH */
     receive() external payable {}
 }
