@@ -203,9 +203,8 @@ contract ZAMMLaunch {
             require(coinsOut != 0, InvalidMsgVal());
             S.ethRaised += uint128(msg.value);
             S.coinsSold += coinsOut;
+            balances[coinId][msg.sender] += coinsOut;
         }
-
-        balances[coinId][msg.sender] += coinsOut;
 
         emit Buy(msg.sender, coinId, msg.value, coinsOut);
 
@@ -253,7 +252,7 @@ contract ZAMMLaunch {
             )
         );
 
-        // If the order has been deleted (deadline==0), treat as sold
+        /* if order has been deleted (deadline==0), treat as sold */
         (, uint56 deadline,, uint96 outDone) = Z.orders(orderHash);
         if (deadline == 0) {
             return 0;
