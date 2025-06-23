@@ -548,6 +548,67 @@ contract ZAMMLaunchpadTest is Test {
         pad.buy{value: 1 ether}(coinId, 0);
     }
 
+    /* ==================================================================
+    26. coinWithPoolCustom – lpLock success & timed unlock ─────────── */
+    function testCoinWithPoolCustomLpLockUnlock() public {
+        vm.deal(address(this), 2 ether);
+
+        uint256 swapFee = 75; // ≤ MAX_FEE_BPS
+        uint256 poolAmt = 100;
+        uint256 unlockAt = block.timestamp + 30 days;
+
+        (uint256 coinId, uint256 lpMinted) =
+            pad.coinWithPoolCustom{value: 1 ether}(true, swapFee, poolAmt, 0, unlockAt, "uri");
+
+        /* LP minted to launchpad and immediately locked for this tester */
+        uint256 poolId =
+            uint256(keccak256(abi.encode(uint256(0), coinId, address(0), address(zamm), swapFee)));
+
+        /* LPs are burned into the timelock – launchpad holds none */
+        assertEq(zamm.balanceOf(address(pad), poolId), 0);
+        assertEq(zamm.balanceOf(address(zamm), poolId), 0);
+
+        bytes32 lockHash =
+            keccak256(abi.encode(address(zamm), address(this), poolId, lpMinted, unlockAt));
+        assertEq(zamm.lockups(lockHash), unlockAt);
+
+        /* premature unlock must revert with Pending() */
+        vm.expectRevert(ZAMM.Pending.selector);
+        zamm.unlock(address(zamm), address(this), poolId, lpMinted, unlockAt);
+
+        /* after time-warp the LP unlocks successfully */
+        vm.warp(unlockAt + 1);
+        zamm.unlock(address(zamm), address(this), poolId, lpMinted, unlockAt);
+        assertEq(zamm.balanceOf(address(this), poolId), lpMinted);
+        assertEq(
+            zamm.lockups(
+                keccak256(abi.encode(address(zamm), address(this), poolId, lpMinted, unlockAt))
+            ),
+            0
+        );
+    }
+
+    /* ==================================================================
+    27. coinWithPoolCustom – swapFee > 10_000 reverts ──────────────── */
+    function testCoinWithPoolCustomInvalidFeeReverts() public {
+        vm.deal(address(this), 1 ether);
+        uint256 invalidFee = 10_001;
+
+        vm.expectRevert(); // addLiquidity deep revert (hook path) or front-end guard if you added one
+        pad.coinWithPoolCustom{value: 1 ether}(false, invalidFee, 100, 0, 0, "uri");
+    }
+
+    /* ==================================================================
+    28. coinWithPoolCustom – lpLock but past unlock time reverts ───── */
+    function testCoinWithPoolCustomPastUnlockReverts() public {
+        vm.deal(address(this), 1 ether);
+        uint256 swapFee = 50;
+        uint256 pastTime = block.timestamp; // not > now
+
+        vm.expectRevert(); // Z.lockup will revert with Expired()
+        pad.coinWithPoolCustom{value: 1 ether}(true, swapFee, 100, 0, pastTime, "uri");
+    }
+
     /* allow contracts in tests to receive ETH */
     receive() external payable {}
 }

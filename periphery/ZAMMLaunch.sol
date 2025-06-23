@@ -6,7 +6,7 @@ contract ZAMMLaunch {
     /* ───────── constants ───────── */
     IZAMM constant Z = IZAMM(0x000000000000040470635EB91b7CE4D132D616eD);
     uint56 constant SALE_DURATION = 1 weeks;
-    uint256 constant DEFAULT_FEE_BPS = 100; // 1 %
+    uint256 constant DEFAULT_FEE_BPS = 100; // 1%
 
     /* ───────── storage ───────── */
     struct Sale {
@@ -93,6 +93,7 @@ contract ZAMMLaunch {
             }
             S.deadlineLast = dlBase + uint56(L - 1);
 
+            /* prevent creator unlock while sale is running */
             require(creatorUnlock == 0 || creatorUnlock > S.deadlineLast, InvalidUnlock());
 
             emit Launch(msg.sender, coinId, saleSupply);
@@ -200,7 +201,7 @@ contract ZAMMLaunch {
 
         unchecked {
             coinsOut = uint128(coinsIn * msg.value / ethOut);
-            require(coinsOut != 0, InvalidMsgVal());
+            require(coinsOut != 0, InvalidMsgVal()); // sanity
             S.ethRaised += uint128(msg.value);
             S.coinsSold += coinsOut;
             balances[coinId][msg.sender] += coinsOut;
@@ -214,8 +215,7 @@ contract ZAMMLaunch {
 
     function _saleSupply(Sale storage S) internal view returns (uint256 sum) {
         unchecked {
-            uint256 L = S.trancheCoins.length;
-            for (uint256 i; i != L; ++i) sum += S.trancheCoins[i];
+            for (uint256 i; i != S.trancheCoins.length; ++i) sum += S.trancheCoins[i];
         }
     }
 
