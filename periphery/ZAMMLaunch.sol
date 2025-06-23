@@ -21,6 +21,7 @@ contract ZAMMLaunch {
     }
 
     mapping(uint256 coinId => Sale) public sales;
+    mapping(uint256 coinId => mapping(address user => uint256)) public balances;
 
     /* ───────── events ───────── */
     event Launch(address indexed creator, uint256 indexed coinId, uint96 saleSupply);
@@ -35,6 +36,7 @@ contract ZAMMLaunch {
     // =====================================================================*/
 
     error InvalidArray();
+    error InvalidUnlock();
 
     function launch(
         uint96 creatorSupply,
@@ -60,7 +62,7 @@ contract ZAMMLaunch {
             if (creatorUnlock > block.timestamp) {
                 Z.lockup(address(Z), msg.sender, coinId, creatorSupply, creatorUnlock);
             } else {
-                Z.transfer(msg.sender, coinId, creatorSupply);
+                balances[coinId][msg.sender] = creatorSupply;
             }
         }
 
@@ -79,7 +81,7 @@ contract ZAMMLaunch {
                     address(Z),
                     coinId,
                     trancheCoins[i], // sell coin
-                    address(0),
+                    address(this),
                     0,
                     tranchePrice[i], // want ETH
                     dl,
@@ -90,6 +92,8 @@ contract ZAMMLaunch {
                 S.deadlines.push(dl);
             }
             S.deadlineLast = dlBase + uint56(L - 1);
+
+            require(creatorUnlock == 0 || creatorUnlock > S.deadlineLast, InvalidUnlock());
 
             emit Launch(msg.sender, coinId, saleSupply);
         }
@@ -125,6 +129,43 @@ contract ZAMMLaunch {
         );
     }
 
+    function coinWithPoolCustom(
+        bool lpLock,
+        uint256 swapFee,
+        uint256 poolSupply,
+        uint256 creatorSupply,
+        uint256 creatorUnlock,
+        string calldata uri
+    ) public payable returns (uint256 coinId, uint256 lp) {
+        coinId = Z.coin(address(this), poolSupply + creatorSupply, uri);
+
+        if (creatorSupply != 0) {
+            // lock if forward-looking
+            if (creatorUnlock > block.timestamp) {
+                Z.lockup(address(Z), msg.sender, coinId, creatorSupply, creatorUnlock);
+            } else {
+                Z.transfer(msg.sender, coinId, creatorSupply);
+            }
+        }
+
+        IZAMM.PoolKey memory key = IZAMM.PoolKey({
+            id0: 0,
+            id1: coinId,
+            token0: address(0),
+            token1: address(Z),
+            feeOrHook: swapFee
+        });
+
+        address receiver;
+        lpLock ? receiver = address(this) : msg.sender;
+
+        (,, lp) = Z.addLiquidity{value: msg.value}(
+            key, msg.value, poolSupply, 0, 0, receiver, block.timestamp
+        );
+
+        if (lpLock) Z.lockup(address(Z), msg.sender, uint256(keccak256(abi.encode(key))), lp, creatorUnlock);
+    }
+
     /* ===================================================================== //
                                   B U Y
     // =====================================================================*/
@@ -135,11 +176,6 @@ contract ZAMMLaunch {
 
     /// @notice Purchase coins from selected tranche. Finalizes pool liquidity if last fill.
     function buy(uint256 coinId, uint256 trancheIdx) public payable returns (uint128 coinsOut) {
-        // set transient guard
-        assembly ("memory-safe") {
-            tstore(0x00, address())
-        }
-
         Sale storage S = sales[coinId];
         require(S.creator != address(0), Finalized());
         require(trancheIdx < S.trancheCoins.length, BadIndex());
@@ -147,23 +183,20 @@ contract ZAMMLaunch {
         uint96 coinsIn = S.trancheCoins[trancheIdx];
         uint96 ethOut = S.tranchePrice[trancheIdx];
 
-        Z.fillOrder{value: msg.value}(
+        if (mulmod(msg.value, coinsIn, ethOut) != 0) revert InvalidMsgVal();
+
+        Z.fillOrder(
             address(this),
             address(Z),
             coinId,
             coinsIn,
-            address(0),
+            address(this),
             0,
             ethOut,
             S.deadlines[trancheIdx],
             true,
             uint96(msg.value)
         );
-
-        // clear transient guard
-        assembly ("memory-safe") {
-            tstore(0x00, 0)
-        }
 
         unchecked {
             coinsOut = uint128(coinsIn * msg.value / ethOut);
@@ -172,12 +205,27 @@ contract ZAMMLaunch {
             S.coinsSold += coinsOut;
         }
 
-        Z.transfer(msg.sender, coinId, coinsOut);
+        balances[coinId][msg.sender] += coinsOut;
 
         emit Buy(msg.sender, coinId, msg.value, coinsOut);
 
         /* auto-finalize if no coins left */
-        if (Z.balanceOf(address(this), coinId) == S.coinsSold) _finalize(S, coinId);
+        if (S.coinsSold == _saleSupply(S)) _finalize(S, coinId);
+    }
+
+    function _saleSupply(Sale storage S) internal view returns (uint256 sum) {
+        unchecked {
+            uint256 L = S.trancheCoins.length;
+            for (uint256 i; i != L; ++i) sum += S.trancheCoins[i];
+        }
+    }
+
+    /// @dev Dummy ERC20 token stub in order to lock all orderbook interactions to launchpad.
+    function transferFrom(address from, address to, uint256) public payable returns (bool) {
+        require(msg.sender == address(Z));
+        require(from == address(this));
+        require(to == address(this));
+        return true;
     }
 
     /// @notice Remaining wei to fill a given tranche order (0 if sold-out or finalized).
@@ -197,7 +245,7 @@ contract ZAMMLaunch {
                 address(Z),
                 coinId,
                 S.trancheCoins[trancheIdx],
-                address(0),
+                address(this),
                 0,
                 ethTotal,
                 S.deadlines[trancheIdx],
@@ -206,21 +254,12 @@ contract ZAMMLaunch {
         );
 
         // If the order has been deleted (deadline==0), treat as sold
-        (, uint56 deadline, , uint96 outDone) = Z.orders(orderHash);
+        (, uint56 deadline,, uint96 outDone) = Z.orders(orderHash);
         if (deadline == 0) {
             return 0;
         }
         if (ethTotal > outDone) {
             weiRemaining = ethTotal - outDone;
-        }
-    }
-
-    error Unauthorized();
-
-    receive() external payable {
-        require(msg.sender == address(Z), Unauthorized());
-        assembly ("memory-safe") { // check transient guard
-            if iszero(tload(0x00)) { revert(codesize(), 0x00) }
         }
     }
 
@@ -236,6 +275,14 @@ contract ZAMMLaunch {
         require(S.creator != address(0), Finalized());
         require(block.timestamp >= S.deadlineLast, Pending());
         _finalize(S, coinId);
+    }
+
+    /// @notice Anyone may claim after finalized.
+    function claim(uint256 coinId, uint256 amount) public {
+        Sale storage S = sales[coinId];
+        require(S.creator == address(0), Pending());
+        balances[coinId][msg.sender] -= amount;
+        Z.transfer(msg.sender, coinId, amount);
     }
 
     /* ---------------- internal worker ---------------- */
@@ -336,6 +383,4 @@ interface IZAMM {
         external
         returns (uint256 coinId);
     function transfer(address to, uint256 id, uint256 amount) external returns (bool);
-    function balanceOf(address owner, uint256 id) external view returns (uint256);
-    function setOperator(address op, bool ok) external returns (bool);
 }
