@@ -118,6 +118,8 @@ contract ZAMMLaunch {
         }
     }
 
+    /* ───────── direct coin methods ───────── */
+
     function coinWithPool(
         uint256 poolSupply,
         uint256 creatorSupply,
@@ -185,6 +187,24 @@ contract ZAMMLaunch {
         if (lpLock) Z.lockup(address(Z), msg.sender, uint256(keccak256(abi.encode(key))), lp, creatorUnlock);
     }
 
+    function coinWithLockup(
+        uint256 creatorSupply,
+        uint256 creatorLockup,
+        uint256 creatorUnlock,
+        string calldata uri
+    ) public returns (uint256 coinId) {
+        coinId = Z.coin(address(this), creatorSupply + creatorLockup, uri);
+
+        // -- immediate portion --
+        if (creatorSupply != 0) Z.transfer(msg.sender, coinId, creatorSupply);
+        
+        // -- locked portion --
+        if (creatorLockup != 0) {
+            require(creatorUnlock > block.timestamp, InvalidUnlock());
+            Z.lockup(address(Z), msg.sender, coinId, creatorLockup, creatorUnlock);
+        }
+    }
+
     /* ===================================================================== //
                                   B U Y
     // =====================================================================*/
@@ -218,7 +238,7 @@ contract ZAMMLaunch {
         );
 
         unchecked {
-            coinsOut = uint128(coinsIn * msg.value / ethOut);
+            coinsOut = uint128((coinsIn * msg.value) / ethOut);
             require(coinsOut != 0, InvalidMsgVal()); // sanity
             S.ethRaised += uint128(msg.value);
             S.coinsSold += coinsOut;
@@ -338,7 +358,7 @@ contract ZAMMLaunch {
         // -------- refund surplus (if any) ------------------------------
         if (msg.value > costWei) {
             unchecked {
-                payable(msg.sender).transfer(msg.value - costWei);
+                safeTransferETH(msg.sender, msg.value - costWei);
             }
         }
     }
@@ -499,4 +519,16 @@ interface IZAMM {
         external
         returns (uint256 coinId);
     function transfer(address to, uint256 id, uint256 amount) external returns (bool);
+}
+
+// Modified from Solady (https://github.com/Vectorized/solady/blob/main/src/utils/SafeTransferLib.sol)
+
+/// @dev Sends `amount` (in wei) ETH to `to`.
+function safeTransferETH(address to, uint256 amount) {
+    assembly ("memory-safe") {
+        if iszero(call(gas(), to, amount, codesize(), 0x00, codesize(), 0x00)) {
+            mstore(0x00, 0xb12d13eb) // `ETHTransferFailed()`
+            revert(0x1c, 0x04)
+        }
+    }
 }
