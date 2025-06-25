@@ -65,6 +65,7 @@ contract ZAMMLaunch {
     ) public returns (uint256 coinId) {
         uint256 L = trancheCoins.length;
         require(L != 0, InvalidArray());
+        require(L <= 100, InvalidArray()); // sanity max
         require(L == tranchePrice.length, InvalidArray());
 
         /* 1. mint coin to this contract */
