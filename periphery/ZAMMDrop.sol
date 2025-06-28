@@ -3,6 +3,8 @@ pragma solidity ^0.8.30;
 
 /// @notice ERC6909 batch transfer utility for airdrops and multisend.
 contract ZAMMDrop {
+    error InvalidArray();
+
     function drop(
         address token,
         uint256 id,
@@ -53,8 +55,6 @@ contract ZAMMDrop {
             }
         }
     }
-
-    error InvalidArray();
 
     function lock(
         address token,
