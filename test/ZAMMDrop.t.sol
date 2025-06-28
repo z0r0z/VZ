@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import {ZAMMDrop} from "../periphery/ZAMMDrop.sol";
+import {IZAMM, ZAMMDrop} from "../periphery/ZAMMDrop.sol";
 
 /// @dev a minimal ERC-6909 mock implementing only transferFrom/transfer
 contract Mock6909 {
@@ -78,7 +78,7 @@ contract ZAMMDropTest is Test {
         amounts[1] = 60;
 
         vm.prank(alice);
-        drop.drop(address(token), ID, tos, amounts, 100);
+        drop.drop(IZAMM(address(token)), ID, 100, tos, amounts);
 
         assertEq(token.balanceOf(alice, ID), 0);
         assertEq(token.balanceOf(bob, ID), 40);
@@ -97,7 +97,7 @@ contract ZAMMDropTest is Test {
 
         vm.prank(alice);
         vm.expectRevert();
-        drop.drop(address(token), ID, tos, amounts, 10);
+        drop.drop(IZAMM(address(token)), ID, 10, tos, amounts);
     }
 
     /// @notice simulate transferFrom failure
@@ -112,7 +112,7 @@ contract ZAMMDropTest is Test {
 
         vm.prank(alice);
         vm.expectRevert();
-        drop.drop(address(token), ID, tos, amounts, 10);
+        drop.drop(IZAMM(address(token)), ID, 10, tos, amounts);
     }
 
     /// @notice if totalAmount > sum(amounts), leftovers stay in the contract
@@ -126,7 +126,7 @@ contract ZAMMDropTest is Test {
         amounts[1] = 20;
 
         vm.prank(alice);
-        drop.drop(address(token), ID, tos, amounts, 40);
+        drop.drop(IZAMM(address(token)), ID, 40, tos, amounts);
 
         assertEq(token.balanceOf(bob, ID), 10);
         assertEq(token.balanceOf(carol, ID), 20);
@@ -140,7 +140,7 @@ contract ZAMMDropTest is Test {
         uint256[] memory amounts = new uint256[](0);
 
         vm.prank(alice);
-        drop.drop(address(token), ID, tos, amounts, 0);
+        drop.drop(IZAMM(address(token)), ID, 0, tos, amounts);
 
         assertEq(token.balanceOf(alice, ID), 100);
         assertEq(token.balanceOf(address(drop), ID), 0);
