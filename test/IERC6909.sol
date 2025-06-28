@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-
 /// @title ERC6909 Core Interface
 /// @author jtriley.eth
 interface IERC6909 {
@@ -12,7 +11,11 @@ interface IERC6909 {
     /// @param id The id of the token.
     /// @param amount The amount of the token.
     event Transfer(
-        address caller, address indexed sender, address indexed receiver, uint256 indexed id, uint256 amount
+        address caller,
+        address indexed sender,
+        address indexed receiver,
+        uint256 indexed id,
+        uint256 amount
     );
 
     /// @notice The event emitted when an operator is set.
@@ -26,7 +29,9 @@ interface IERC6909 {
     /// @param spender The address of the spender.
     /// @param id The id of the token.
     /// @param amount The amount of the token.
-    event Approval(address indexed owner, address indexed spender, uint256 indexed id, uint256 amount);
+    event Approval(
+        address indexed owner, address indexed spender, uint256 indexed id, uint256 amount
+    );
 
     /// @notice Owner balance of an id.
     /// @param owner The address of the owner.
@@ -39,7 +44,10 @@ interface IERC6909 {
     /// @param spender The address of the spender.
     /// @param id The id of the token.
     /// @return amount The allowance of the token.
-    function allowance(address owner, address spender, uint256 id) external view returns (uint256 amount);
+    function allowance(address owner, address spender, uint256 id)
+        external
+        view
+        returns (uint256 amount);
 
     /// @notice Checks if a spender is approved by an owner as an operator
     /// @param owner The address of the owner.
@@ -58,7 +66,9 @@ interface IERC6909 {
     /// @param receiver The address of the receiver.
     /// @param id The id of the token.
     /// @param amount The amount of the token.
-    function transferFrom(address sender, address receiver, uint256 id, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address receiver, uint256 id, uint256 amount)
+        external
+        returns (bool);
 
     /// @notice Approves an amount of an id to a spender.
     /// @param spender The address of the spender.
