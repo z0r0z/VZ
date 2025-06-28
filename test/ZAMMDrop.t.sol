@@ -2,10 +2,10 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import {ZAMMDrop, IZAMMDrop} from "../periphery/ZAMMDrop.sol";
+import {ZAMMDrop} from "../periphery/ZAMMDrop.sol";
 
 /// @dev a minimal ERC-6909 mock implementing only transferFrom/transfer
-contract Mock6909 is IZAMMDrop {
+contract Mock6909 {
     mapping(address => mapping(uint256 => uint256)) public balanceOf;
     mapping(address => mapping(uint256 => mapping(address => bool))) public isOperator;
 

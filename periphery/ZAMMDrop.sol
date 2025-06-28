@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-interface IZAMMDrop {
-    function transfer(address to, uint256 id, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 id, uint256 amount) external returns (bool);
-}
-
+/// @notice ERC6909 batch transfer utility for airdrops and multisend.
 contract ZAMMDrop {
-    function drop(address token, uint256 id, address[] calldata tos, uint256[] calldata amounts, uint256 totalAmount) external payable {
+    function drop(
+        address token,
+        uint256 id,
+        address[] calldata tos,
+        uint256[] calldata amounts,
+        uint256 totalAmount
+    ) public payable {
         assembly {
             // Check that the number of addresses matches the number of amounts
-            if iszero(eq(tos.length, amounts.length)) {
-                revert(0, 0)
-            }
+            if iszero(eq(tos.length, amounts.length)) { revert(0, 0) }
 
             // transferFrom(address from, address to, uint256 id, uint256 amount)
             mstore(0x00, hex"fe99049a")
@@ -26,9 +26,7 @@ contract ZAMMDrop {
             mstore(0x64, totalAmount)
 
             // transfer total amount to this contract
-            if iszero(call(gas(), token, 0, 0x00, 0x84, 0, 0)){
-                revert(0, 0)
-            }
+            if iszero(call(gas(), token, 0, 0x00, 0x84, 0, 0)) { revert(0, 0) }
 
             // transfer(address to, uint256 value)
             mstore(0x00, hex"095bcdb6")
@@ -47,9 +45,7 @@ contract ZAMMDrop {
                 // amount
                 mstore(0x44, calldataload(sub(addressOffset, diff)))
                 // transfer the tokens
-                if iszero(call(gas(), token, 0, 0x00, 0x84, 0, 0)){
-                    revert(0, 0)
-                }
+                if iszero(call(gas(), token, 0, 0x00, 0x84, 0, 0)) { revert(0, 0) }
                 // increment the address offset
                 addressOffset := add(addressOffset, 0x20)
                 // if addressOffset >= end, break
