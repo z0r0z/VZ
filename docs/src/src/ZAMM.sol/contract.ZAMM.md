@@ -1,5 +1,5 @@
 # ZAMM
-[Git Source](https://github.com/zammdefi/ZAMM/blob/01418cf0888a2a8e3cc999c814fa483ce70fd973/src/ZAMM.sol)
+[Git Source](https://github.com/zammdefi/ZAMM/blob/b1f7385d35195895d467c8f3f1111586be121980/src/ZAMM.sol)
 
 **Inherits:**
 [ZERC6909](/src/ZERC6909.sol/abstract.ZERC6909.md)

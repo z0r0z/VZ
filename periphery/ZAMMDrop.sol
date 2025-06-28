@@ -5,6 +5,8 @@ pragma solidity ^0.8.30;
 contract ZAMMDrop {
     error InvalidArray();
 
+    constructor() payable {}
+
     function drop(
         IZAMM token,
         uint256 id,

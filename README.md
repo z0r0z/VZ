@@ -2,11 +2,19 @@
 
 A Minimal Multitoken AMM. By [z0r0z](https://x.com/z0r0zzz).
 
-Deployed to [0x000000000000040470635EB91b7CE4D132D616eD](https://contractscan.xyz/contract/0x000000000000040470635EB91b7CE4D132D616eD).
+Deployed to [`0x000000000000040470635EB91b7CE4D132D616eD`](https://contractscan.xyz/contract/0x000000000000040470635EB91b7CE4D132D616eD).
 
 This deployment includes an embedded orderbook and timelock extension.
 
 Docs: [docs.zamm.eth.limo](https://docs.zamm.eth.limo/)
+
+## Periphery
+
+ZAMMLaunch: [`0x000000000077A9C733B9ac3781fB5A1BC7701FBc`](https://contractscan.xyz/contract/0x000000000077A9C733B9ac3781fB5A1BC7701FBc)
+
+ZAMMDrop: [`0x0000000000123A35801d0c49B3aE054ed71AC828`](https://contractscan.xyz/contract/0x0000000000123A35801d0c49B3aE054ed71AC828)
+
+coinchan: [`0x00000000007762D8DCADEddD5Aa5E9a5e2B7c6f5`](https://contractscan.xyz/contract/0x00000000007762D8DCADEddD5Aa5E9a5e2B7c6f5)
 
 ## Getting Started
 
